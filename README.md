@@ -1,0 +1,146 @@
+# GaussDB SQLAlchemy Python 驱动
+
+这是一个面向华为 GaussDB 轻量化集中式 505.1 的轻量 Python 驱动项目，支持 Windows 和 Linux，并提供 SQLAlchemy 2.x 方言。
+
+本项目不重新实现数据库通信协议，而是复用华为官方 `gaussdb` Python DB-API 包作为底层连接能力，再通过 SQLAlchemy 方言接入 ORM、连接池、事务、SQL 编译和反射等能力。
+
+## 功能特性
+
+- 支持 SQLAlchemy 2.x
+- 支持 `gaussdb://...` 连接串
+- 支持 `gaussdb+gaussdb://...` 连接串
+- 底层使用华为 `gaussdb>=1.0.4` DB-API 包
+- 面向 GaussDB 轻量化集中式 505.1 的 PostgreSQL 兼容协议场景
+- 默认关闭 HSTORE 等 PostgreSQL 扩展假设，适合轻量化集中式部署
+- 支持 Windows 安装和运行
+
+## 安装
+
+### Windows
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install gaussdb_sqlalchemy_driver-0.1.0-py3-none-any.whl
+```
+
+如果是从源码目录安装：
+
+```powershell
+python -m pip install .
+```
+
+### Linux 或 macOS
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install gaussdb_sqlalchemy_driver-0.1.0-py3-none-any.whl
+```
+
+## GaussDB 客户端依赖
+
+`gaussdb` 包在运行时需要加载 GaussDB/libpq 客户端实现。
+
+在 Windows 上，请先安装华为 GaussDB 客户端包，并将客户端 `bin` 目录加入 `PATH`，然后再启动 Python、Web 服务或应用程序。
+
+如果导入时报错 `no pq wrapper available`，通常说明 Python 已经能找到 `gaussdb` 包，但还没有找到可用的 GaussDB 原生客户端库。
+
+## SQLAlchemy 使用示例
+
+```python
+from sqlalchemy import create_engine, text
+
+engine = create_engine(
+    "gaussdb+gaussdb://user:password@127.0.0.1:8000/postgres",
+    pool_pre_ping=True,
+)
+
+with engine.begin() as conn:
+    value = conn.execute(text("select 1")).scalar_one()
+    print(value)
+```
+
+也可以使用短连接串：
+
+```python
+from sqlalchemy import create_engine
+
+engine = create_engine(
+    "gaussdb://user:password@127.0.0.1:8000/postgres"
+)
+```
+
+## DB-API 使用示例
+
+```python
+import gaussdb_sqlalchemy.dbapi as gaussdb_driver
+
+with gaussdb_driver.connect(
+    host="127.0.0.1",
+    port=8000,
+    dbname="postgres",
+    user="user",
+    password="password",
+) as conn:
+    with conn.cursor() as cur:
+        cur.execute("select 1")
+        print(cur.fetchone())
+```
+
+## 连接串格式
+
+推荐格式：
+
+```text
+gaussdb+gaussdb://用户名:密码@主机:端口/数据库名
+```
+
+示例：
+
+```text
+gaussdb+gaussdb://gaussdb_user:password@192.168.1.10:8000/postgres
+```
+
+常用参数可以放在查询字符串中：
+
+```text
+gaussdb+gaussdb://user:password@127.0.0.1:8000/postgres?sslmode=verify-full&application_name=myapp
+```
+
+## 开发和测试
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e ".[test]"
+pytest
+```
+
+## 打包
+
+```bash
+python -m pip install build
+python -m build
+```
+
+打包后文件会生成在 `dist/` 目录：
+
+```text
+dist/gaussdb_sqlalchemy_driver-0.1.0-py3-none-any.whl
+dist/gaussdb_sqlalchemy_driver-0.1.0.tar.gz
+```
+
+## 适配范围
+
+当前版本面向 GaussDB 轻量化集中式 505.1 的基础 SQLAlchemy 接入场景，适合应用侧先完成连接、查询、事务、连接池和 ORM 基础能力适配。
+
+后续可以继续补充：
+
+- 真实 GaussDB 环境集成测试
+- SQLAlchemy 方言兼容性测试套件
+- GaussDB 特有 SQL、数据类型和系统表反射适配
+- Windows 离线安装包和部署脚本

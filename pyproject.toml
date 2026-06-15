@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gaussdb-sqlalchemy-driver"
+version = "0.1.0"
+description = "Lightweight SQLAlchemy dialect and DB-API bridge for Huawei GaussDB centralized 505.1."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+authors = [{ name = "GaussDB Python Driver Contributors" }]
+keywords = ["gaussdb", "sqlalchemy", "database", "driver", "windows"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Database",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "SQLAlchemy>=2.0,<2.2",
+    "gaussdb>=1.0.4",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8",
+]
+
+[project.urls]
+Homepage = "https://github.com/example/gaussdb-sqlalchemy-driver"
+Issues = "https://github.com/example/gaussdb-sqlalchemy-driver/issues"
+
+[project.entry-points."sqlalchemy.dialects"]
+gaussdb = "gaussdb_sqlalchemy.dialect:GaussDBDialect_gaussdb"
+"gaussdb.gaussdb" = "gaussdb_sqlalchemy.dialect:GaussDBDialect_gaussdb"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q"
