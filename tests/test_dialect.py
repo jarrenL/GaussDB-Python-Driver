@@ -2,6 +2,7 @@ import sys
 import types
 
 import pytest
+from sqlalchemy.dialects import registry
 from sqlalchemy.engine import make_url
 
 from gaussdb_sqlalchemy.dialect import GaussDBDialect_gaussdb
@@ -28,6 +29,37 @@ def test_create_connect_args_maps_sqlalchemy_url_to_gaussdb_keywords():
         "sslmode": "verify-full",
         "application_name": "demo",
     }
+
+
+def test_create_connect_args_supports_minimal_url():
+    dialect = GaussDBDialect_gaussdb()
+
+    args, kwargs = dialect.create_connect_args(
+        make_url("gaussdb+gaussdb://localhost/postgres")
+    )
+
+    assert args == []
+    assert kwargs == {
+        "host": "localhost",
+        "dbname": "postgres",
+    }
+
+
+def test_create_connect_args_leaves_query_values_as_strings():
+    dialect = GaussDBDialect_gaussdb()
+
+    args, kwargs = dialect.create_connect_args(
+        make_url("gaussdb+gaussdb://u:p@localhost:8000/postgres?connect_timeout=10")
+    )
+
+    assert args == []
+    assert kwargs["port"] == 8000
+    assert kwargs["connect_timeout"] == "10"
+
+
+def test_sqlalchemy_registry_can_load_installed_dialect():
+    assert registry.load("gaussdb") is GaussDBDialect_gaussdb
+    assert registry.load("gaussdb.gaussdb") is GaussDBDialect_gaussdb
 
 
 def test_import_dbapi_loads_gaussdb_lazily(monkeypatch):
@@ -67,6 +99,27 @@ def test_import_dbapi_has_actionable_error_when_client_library_missing(monkeypat
 def test_is_disconnect_uses_connection_state_and_messages():
     dialect = GaussDBDialect_gaussdb()
 
-    assert dialect.is_disconnect(RuntimeError("ignored"), types.SimpleNamespace(closed=True), None)
+    assert dialect.is_disconnect(
+        RuntimeError("ignored"), types.SimpleNamespace(closed=True), None
+    )
+    assert dialect.is_disconnect(
+        RuntimeError("ignored"), types.SimpleNamespace(broken=True), None
+    )
     assert dialect.is_disconnect(RuntimeError("server closed the connection"), None, None)
+    assert dialect.is_disconnect(RuntimeError("connection was lost"), None, None)
+    assert dialect.is_disconnect(RuntimeError("could not receive data"), None, None)
     assert not dialect.is_disconnect(RuntimeError("syntax error"), None, None)
+
+
+def test_on_connect_registers_notice_handler():
+    dialect = GaussDBDialect_gaussdb()
+    conn = types.SimpleNamespace(handlers=[])
+
+    def add_notice_handler(handler):
+        conn.handlers.append(handler)
+
+    conn.add_notice_handler = add_notice_handler
+
+    dialect.on_connect()(conn)
+
+    assert conn.handlers == [dialect._log_notice]
