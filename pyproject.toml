@@ -32,12 +32,13 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
+    "alembic>=1.13",
     "pytest>=8",
 ]
 
 [project.urls]
-Homepage = "https://github.com/example/gaussdb-sqlalchemy-driver"
-Issues = "https://github.com/example/gaussdb-sqlalchemy-driver/issues"
+Homepage = "https://github.com/jarrenL/GaussDB-Python-Driver"
+Issues = "https://github.com/jarrenL/GaussDB-Python-Driver/issues"
 
 [project.entry-points."sqlalchemy.dialects"]
 gaussdb = "gaussdb_sqlalchemy.dialect:GaussDBDialect_gaussdb"

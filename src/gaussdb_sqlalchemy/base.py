@@ -152,6 +152,105 @@ class GaussDBDialect(PGDialect):
 
         return reflected.items()
 
+    def get_pk_constraint(self, connection, table_name, schema=None, **kw):
+        query = text(
+            """
+            select
+                con.conname as name,
+                a.attname as column_name,
+                a.attnum as ordinality
+            from pg_catalog.pg_constraint con
+            join pg_catalog.pg_class c on c.oid = con.conrelid
+            join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+            join pg_catalog.pg_attribute a
+                on a.attrelid = c.oid and a.attnum = any(con.conkey)
+            where con.contype = 'p'
+              and c.relname = :table_name
+              and (:schema is null or n.nspname = :schema)
+            order by a.attnum
+            """
+        )
+        rows = connection.execute(
+            query, {"table_name": table_name, "schema": schema}
+        ).mappings()
+        constraint_name = None
+        constrained_columns = []
+        for row in rows:
+            constraint_name = self._decode_if_bytes(row["name"])
+            constrained_columns.append(self._decode_if_bytes(row["column_name"]))
+        return {"constrained_columns": constrained_columns, "name": constraint_name}
+
+    def get_unique_constraints(self, connection, table_name, schema=None, **kw):
+        query = text(
+            """
+            select
+                con.conname as name,
+                a.attname as column_name,
+                a.attnum as ordinality
+            from pg_catalog.pg_constraint con
+            join pg_catalog.pg_class c on c.oid = con.conrelid
+            join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+            join pg_catalog.pg_attribute a
+                on a.attrelid = c.oid and a.attnum = any(con.conkey)
+            where con.contype = 'u'
+              and c.relname = :table_name
+              and (:schema is null or n.nspname = :schema)
+            order by con.conname, a.attnum
+            """
+        )
+        rows = connection.execute(
+            query, {"table_name": table_name, "schema": schema}
+        ).mappings()
+        constraints = {}
+        for row in rows:
+            name = self._decode_if_bytes(row["name"])
+            constraints.setdefault(name, []).append(
+                self._decode_if_bytes(row["column_name"])
+            )
+        return [
+            {"name": name, "column_names": columns, "duplicates_index": None}
+            for name, columns in constraints.items()
+        ]
+
+    def get_indexes(self, connection, table_name, schema=None, **kw):
+        query = text(
+            """
+            select
+                i.relname as index_name,
+                a.attname as column_name,
+                x.indisunique as is_unique,
+                a.attnum as ordinality
+            from pg_catalog.pg_class t
+            join pg_catalog.pg_namespace n on n.oid = t.relnamespace
+            join pg_catalog.pg_index x on x.indrelid = t.oid
+            join pg_catalog.pg_class i on i.oid = x.indexrelid
+            join pg_catalog.pg_attribute a
+                on a.attrelid = t.oid and a.attnum = any(x.indkey)
+            where t.relname = :table_name
+              and (:schema is null or n.nspname = :schema)
+              and not x.indisprimary
+            order by i.relname, a.attnum
+            """
+        )
+        rows = connection.execute(
+            query, {"table_name": table_name, "schema": schema}
+        ).mappings()
+        indexes = {}
+        for row in rows:
+            name = self._decode_if_bytes(row["index_name"])
+            index = indexes.setdefault(
+                name,
+                {
+                    "name": name,
+                    "unique": row["is_unique"],
+                    "column_names": [],
+                    "include_columns": [],
+                    "dialect_options": {},
+                },
+            )
+            index["column_names"].append(self._decode_if_bytes(row["column_name"]))
+        return list(indexes.values())
+
     @staticmethod
     def _normalize_gaussdb_version(version_info):
         if not version_info:

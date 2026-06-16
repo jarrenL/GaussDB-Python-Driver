@@ -139,3 +139,58 @@ def test_get_columns_uses_gaussdb_compatible_reflection_query():
     assert dict(dialect.get_multi_columns(connection, filter_names=["demo"])).get(
         (None, "demo")
     )
+
+
+def test_get_pk_constraint_uses_gaussdb_compatible_query():
+    dialect = GaussDBDialect()
+    connection = _ReflectionConnection(
+        [
+            {"name": b"demo_pkey", "column_name": b"id", "ordinality": 1},
+        ]
+    )
+
+    assert dialect.get_pk_constraint(connection, "demo") == {
+        "constrained_columns": ["id"],
+        "name": "demo_pkey",
+    }
+
+
+def test_get_unique_constraints_uses_gaussdb_compatible_query():
+    dialect = GaussDBDialect()
+    connection = _ReflectionConnection(
+        [
+            {"name": b"uq_demo_code", "column_name": b"code", "ordinality": 1},
+        ]
+    )
+
+    assert dialect.get_unique_constraints(connection, "demo") == [
+        {
+            "name": "uq_demo_code",
+            "column_names": ["code"],
+            "duplicates_index": None,
+        }
+    ]
+
+
+def test_get_indexes_uses_gaussdb_compatible_query():
+    dialect = GaussDBDialect()
+    connection = _ReflectionConnection(
+        [
+            {
+                "index_name": b"ix_demo_name",
+                "column_name": b"name",
+                "is_unique": False,
+                "ordinality": 1,
+            },
+        ]
+    )
+
+    assert dialect.get_indexes(connection, "demo") == [
+        {
+            "name": "ix_demo_name",
+            "unique": False,
+            "column_names": ["name"],
+            "include_columns": [],
+            "dialect_options": {},
+        }
+    ]

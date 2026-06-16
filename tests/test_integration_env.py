@@ -3,10 +3,12 @@ import uuid
 
 import pytest
 from sqlalchemy import Column
+from sqlalchemy import Index
 from sqlalchemy import Integer
 from sqlalchemy import MetaData
 from sqlalchemy import String
 from sqlalchemy import Table
+from sqlalchemy import UniqueConstraint
 from sqlalchemy import create_engine
 from sqlalchemy import inspect
 from sqlalchemy import select
@@ -169,6 +171,113 @@ def test_metadata_reflection_against_gaussdb_url_from_env():
         assert columns["name"]["nullable"] is False
     finally:
         metadata.drop_all(engine)
+
+
+@pytest.mark.integration
+def test_index_unique_and_pk_reflection_against_gaussdb_url_from_env():
+    engine = _engine()
+    table_name = _table_name("codex_idx_ut")
+    index_name = f"ix_{table_name}_name"
+    unique_name = f"uq_{table_name}_code"
+    metadata = MetaData()
+    table = Table(
+        table_name,
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("code", String(32), nullable=False),
+        Column("name", String(32), nullable=False),
+        UniqueConstraint("code", name=unique_name),
+        Index(index_name, "name"),
+    )
+
+    try:
+        metadata.create_all(engine)
+
+        inspector = inspect(engine)
+        pk = inspector.get_pk_constraint(table_name)
+        assert pk["constrained_columns"] == ["id"]
+
+        unique_constraints = inspector.get_unique_constraints(table_name)
+        assert any(
+            constraint["name"] == unique_name
+            and constraint["column_names"] == ["code"]
+            for constraint in unique_constraints
+        )
+
+        indexes = inspector.get_indexes(table_name)
+        assert any(
+            index["name"] == index_name and index["column_names"] == ["name"]
+            for index in indexes
+        )
+    finally:
+        metadata.drop_all(engine)
+
+
+@pytest.mark.integration
+def test_serial_like_default_and_sequence_against_gaussdb_url_from_env():
+    engine = _engine()
+    table_name = _table_name("codex_seq_ut")
+    sequence_name = f"{table_name}_id_seq"
+
+    with engine.begin() as conn:
+        conn.execute(text(f"drop table if exists {table_name}"))
+        conn.execute(text(f"drop sequence if exists {sequence_name}"))
+        conn.execute(text(f"create sequence {sequence_name} start 1"))
+        conn.execute(
+            text(
+                f"create table {table_name} ("
+                "id int primary key default nextval("
+                f"'{sequence_name}'"
+                "), name varchar(32))"
+            )
+        )
+        conn.execute(text(f"insert into {table_name} (name) values (:name)"), {"name": "a"})
+        conn.execute(text(f"insert into {table_name} (name) values (:name)"), {"name": "b"})
+        rows = conn.execute(text(f"select id, name from {table_name} order by id")).all()
+        assert rows == [(1, "a"), (2, "b")]
+
+        columns = {column["name"]: column for column in inspect(conn).get_columns(table_name)}
+        assert "nextval" in columns["id"]["default"]
+
+        conn.execute(text(f"drop table {table_name}"))
+        conn.execute(text(f"drop sequence {sequence_name}"))
+
+
+@pytest.mark.integration
+def test_alembic_operations_against_gaussdb_url_from_env():
+    alembic = pytest.importorskip("alembic")
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    assert alembic
+
+    engine = _engine()
+    table_name = _table_name("codex_alembic_ut")
+
+    with engine.begin() as conn:
+        context = MigrationContext.configure(conn)
+        operations = Operations(context)
+        operations.create_table(
+            table_name,
+            Column("id", Integer, primary_key=True),
+            Column("name", String(32), nullable=False),
+        )
+        operations.add_column(table_name, Column("remark", String(64)))
+
+        conn.execute(
+            text(
+                f"insert into {table_name} (id, name, remark) "
+                "values (:id, :name, :remark)"
+            ),
+            {"id": 1, "name": "created", "remark": "via alembic"},
+        )
+        row = conn.execute(
+            text(f"select id, name, remark from {table_name} where id=:id"),
+            {"id": 1},
+        ).one()
+        assert row == (1, "created", "via alembic")
+
+        operations.drop_table(table_name)
 
 
 @pytest.mark.integration

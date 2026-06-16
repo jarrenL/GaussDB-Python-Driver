@@ -142,6 +142,25 @@ pytest -m integration
 
 集成测试覆盖 SQLAlchemy Core、事务回滚、批量插入、ORM CRUD、元数据反射和连接池基础复用。
 
+没有安装 pytest 的数据库主机也可以运行轻量探针：
+
+```bash
+GAUSSDB_TEST_URL='gaussdb+gaussdb://user:password@host:port/postgres' \
+python scripts/run_integration_probe.py
+```
+
+探针覆盖主键、唯一约束、普通索引反射、序列默认值和 Alembic Operations。
+
+## Alembic 支持
+
+测试依赖中包含 Alembic。本项目会在 Alembic 可用时注册 `gaussdb` DDL 实现，复用 Alembic PostgreSQL 基础实现，当前已验证：
+
+- `Operations.create_table()`
+- `Operations.add_column()`
+- `Operations.drop_table()`
+
+Alembic autogenerate 还需要更多真实场景回归。
+
 ## 打包
 
 ```bash

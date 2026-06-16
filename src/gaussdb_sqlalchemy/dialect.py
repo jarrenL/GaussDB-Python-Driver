@@ -6,7 +6,11 @@ import re
 from typing import Any
 
 from . import dbapi as gaussdb_dbapi
+from .alembic import register_alembic_impl
 from .base import GaussDBDialect
+
+
+register_alembic_impl()
 
 
 class GaussDBDialect_gaussdb(GaussDBDialect):
