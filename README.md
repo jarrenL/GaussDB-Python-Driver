@@ -48,6 +48,13 @@ python -m pip install gaussdb_sqlalchemy_driver-0.1.0-py3-none-any.whl
 
 如果导入时报错 `no pq wrapper available`，通常说明 Python 已经能找到 `gaussdb` 包，但还没有找到可用的 GaussDB 原生客户端库。
 
+可以使用环境检查脚本确认 Python 包和真实连接是否可用：
+
+```powershell
+python scripts\check_windows_env.py
+python scripts\check_windows_env.py --url "gaussdb+gaussdb://user:password@host:port/postgres"
+```
+
 ## SQLAlchemy 使用示例
 
 ```python
@@ -130,8 +137,10 @@ pytest
 
 ```bash
 export GAUSSDB_TEST_URL='gaussdb+gaussdb://user:password@host:port/postgres'
-pytest
+pytest -m integration
 ```
+
+集成测试覆盖 SQLAlchemy Core、事务回滚、批量插入、ORM CRUD、元数据反射和连接池基础复用。
 
 ## 打包
 
@@ -153,7 +162,6 @@ dist/gaussdb_sqlalchemy_driver-0.1.0.tar.gz
 
 后续可以继续补充：
 
-- 真实 GaussDB 环境集成测试
 - SQLAlchemy 方言兼容性测试套件
 - GaussDB 特有 SQL、数据类型和系统表反射适配
 - Windows 离线安装包和部署脚本
