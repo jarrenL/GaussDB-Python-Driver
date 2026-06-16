@@ -110,6 +110,12 @@ gaussdb+gaussdb://gaussdb_user:password@192.168.1.10:8000/postgres
 gaussdb+gaussdb://user:password@127.0.0.1:8000/postgres?sslmode=verify-full&application_name=myapp
 ```
 
+方言默认会向底层 `gaussdb` 驱动传入 `client_encoding=UTF8`，避免部分 GaussDB 环境默认 `SQL_ASCII` 时文本字段以 `bytes` 返回。如果确实需要其他编码，可以在连接串中显式覆盖：
+
+```text
+gaussdb+gaussdb://user:password@127.0.0.1:8000/postgres?client_encoding=LATIN1
+```
+
 ## 开发和测试
 
 ```bash
@@ -117,6 +123,13 @@ python3 -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e ".[test]"
+pytest
+```
+
+如果要连接真实 GaussDB 环境执行集成测试，可以设置：
+
+```bash
+export GAUSSDB_TEST_URL='gaussdb+gaussdb://user:password@host:port/postgres'
 pytest
 ```
 

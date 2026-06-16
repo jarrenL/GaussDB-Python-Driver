@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from sqlalchemy.dialects.postgresql.base import PGDialect
 
 
@@ -33,6 +35,26 @@ class GaussDBDialect(PGDialect):
             self.server_version_info
         )
 
+    def _get_server_version_info(self, connection):
+        version = connection.exec_driver_sql("select pg_catalog.version()").scalar()
+        version = self._decode_if_bytes(version)
+
+        match = re.search(
+            r"(?:GaussDB Kernel|PostgreSQL|EnterpriseDB)\s+"
+            r"(\d+)\.?(\d+)?(?:\.(\d+))?",
+            version,
+            re.IGNORECASE,
+        )
+        if not match:
+            raise AssertionError(
+                "Could not determine GaussDB version from string '%s'" % version
+            )
+        return tuple(int(part) for part in match.group(1, 2, 3) if part is not None)
+
+    def _get_default_schema_name(self, connection):
+        schema_name = connection.exec_driver_sql("select current_schema()").scalar()
+        return self._decode_if_bytes(schema_name)
+
     @staticmethod
     def _normalize_gaussdb_version(version_info):
         if not version_info:
@@ -48,3 +70,9 @@ class GaussDBDialect(PGDialect):
             except (TypeError, ValueError):
                 break
         return tuple(normalized) or version_info
+
+    @staticmethod
+    def _decode_if_bytes(value):
+        if isinstance(value, bytes):
+            return value.decode("utf-8")
+        return value

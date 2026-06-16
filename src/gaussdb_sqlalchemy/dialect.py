@@ -13,6 +13,7 @@ class GaussDBDialect_gaussdb(GaussDBDialect):
     """GaussDB dialect backed by the Huawei ``gaussdb`` DB-API adapter."""
 
     driver = "gaussdb"
+    supports_statement_cache = True
 
     @classmethod
     def import_dbapi(cls):
@@ -21,6 +22,7 @@ class GaussDBDialect_gaussdb(GaussDBDialect):
     def create_connect_args(self, url):
         opts = url.translate_connect_args(username="user", database="dbname")
         opts.update(url.query)
+        opts.setdefault("client_encoding", "UTF8")
 
         port = opts.get("port")
         if port is not None:

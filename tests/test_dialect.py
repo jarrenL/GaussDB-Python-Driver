@@ -28,6 +28,7 @@ def test_create_connect_args_maps_sqlalchemy_url_to_gaussdb_keywords():
         "password": "tiger",
         "sslmode": "verify-full",
         "application_name": "demo",
+        "client_encoding": "UTF8",
     }
 
 
@@ -42,6 +43,7 @@ def test_create_connect_args_supports_minimal_url():
     assert kwargs == {
         "host": "localhost",
         "dbname": "postgres",
+        "client_encoding": "UTF8",
     }
 
 
@@ -55,11 +57,27 @@ def test_create_connect_args_leaves_query_values_as_strings():
     assert args == []
     assert kwargs["port"] == 8000
     assert kwargs["connect_timeout"] == "10"
+    assert kwargs["client_encoding"] == "UTF8"
+
+
+def test_create_connect_args_allows_client_encoding_override():
+    dialect = GaussDBDialect_gaussdb()
+
+    args, kwargs = dialect.create_connect_args(
+        make_url("gaussdb+gaussdb://localhost/postgres?client_encoding=LATIN1")
+    )
+
+    assert args == []
+    assert kwargs["client_encoding"] == "LATIN1"
 
 
 def test_sqlalchemy_registry_can_load_installed_dialect():
     assert registry.load("gaussdb") is GaussDBDialect_gaussdb
     assert registry.load("gaussdb.gaussdb") is GaussDBDialect_gaussdb
+
+
+def test_driver_dialect_enables_statement_cache():
+    assert GaussDBDialect_gaussdb.supports_statement_cache is True
 
 
 def test_import_dbapi_loads_gaussdb_lazily(monkeypatch):
