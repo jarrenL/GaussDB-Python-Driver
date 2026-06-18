@@ -1,6 +1,6 @@
 # GaussDB 与 PostgreSQL 兼容差异清单
 
-本文记录项目在真实 GaussDB 环境验证时发现的 SQLAlchemy 方言差异。Windows 实机验证和 GaussDB 505.1 专项验证需另行补充。
+本文记录项目在真实 GaussDB 环境验证时发现的 SQLAlchemy 方言差异。客户目标兼容模式为 A 兼容和 B 兼容。Windows 实机验证和 GaussDB 505.1 专项验证需另行补充。
 
 ## 已发现并处理
 
@@ -97,7 +97,7 @@ Alembic 的 DDL 实现按 SQLAlchemy `dialect.name` 查找。`gaussdb` 是第三
 
 可使用 `scripts/run_syntax_probe.py` 对当前连接库执行 PostgreSQL、Oracle 风格、MySQL 风格 SQL 探测。
 
-已验证环境：
+已验证 A 兼容环境：
 
 ```text
 GaussDB Kernel 507.0.0
@@ -114,6 +114,25 @@ datcompatibility = A
 结论：
 
 当前包可连接并使用 A/Oracle 兼容库中的 PG 基础语法和部分 Oracle 风格语法，但仍然不是 O 兼容专用 SQLAlchemy 方言；MySQL/M 兼容语法在当前 A 兼容库和 PG 协议路径下不成立。
+
+已验证 B 兼容临时库：
+
+```text
+GaussDB Kernel 507.0.0
+datcompatibility = B
+```
+
+结果摘要：
+
+- PostgreSQL 风格基础语法通过：`::` cast、`now()`、`limit`、`serial`
+- Oracle 风格基础语法仍可通过：`dual`、`nvl`、`sysdate`、`rownum`
+- MySQL B 兼容常用语法通过：反引号别名、`ifnull()`、`concat()`、`auto_increment`
+- `current_timestamp()` 形式未通过，应使用不带括号的 `current_timestamp` 或目标库支持的写法
+- 主键、唯一约束、普通索引、序列默认值、Alembic Operations 探针通过
+
+结论：
+
+当前包在 GaussDB 507.0.0 上可连接 A 兼容和 B 兼容数据库，并完成基础 SQLAlchemy 能力验证。B 兼容不同于 M-Compatibility，当前结论不能外推到 M 兼容或 MySQL 原生协议。
 
 ## 待继续验证
 

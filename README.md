@@ -1,6 +1,6 @@
 # GaussDB SQLAlchemy Python 驱动
 
-这是一个面向华为 GaussDB 轻量化集中式 505.1 的轻量 Python 驱动项目，支持 Windows 和 Linux，并提供 SQLAlchemy 2.x 方言。
+这是一个面向华为 GaussDB 轻量化集中式 505.1 的轻量 Python 驱动项目，支持 Windows 和 Linux，并提供 SQLAlchemy 2.x 方言。当前客户目标兼容模式为 A 兼容和 B 兼容。
 
 本项目不重新实现数据库通信协议，而是复用华为官方 `gaussdb` Python DB-API 包作为底层连接能力，再通过 SQLAlchemy 方言接入 ORM、连接池、事务、SQL 编译和反射等能力。
 
@@ -10,7 +10,7 @@
 - 支持 `gaussdb://...` 连接串
 - 支持 `gaussdb+gaussdb://...` 连接串
 - 底层使用华为 `gaussdb>=1.0.4` DB-API 包
-- 面向 GaussDB 轻量化集中式 505.1 的 PostgreSQL 兼容协议场景
+- 面向 GaussDB 轻量化集中式 505.1 的 A 兼容和 B 兼容场景
 - 默认关闭 HSTORE 等 PostgreSQL 扩展假设，适合轻量化集中式部署
 - 支持 Windows 安装和运行
 
@@ -184,7 +184,14 @@ dist/gaussdb_sqlalchemy_driver-0.1.0.tar.gz
 
 ## 适配范围
 
-当前版本面向 GaussDB 轻量化集中式 505.1 的基础 SQLAlchemy 接入场景，适合应用侧先完成连接、查询、事务、连接池和 ORM 基础能力适配。
+当前版本面向 GaussDB 轻量化集中式 505.1 的 A 兼容和 B 兼容基础 SQLAlchemy 接入场景，适合应用侧先完成连接、查询、事务、连接池和 ORM 基础能力适配。
+
+已在 GaussDB Kernel 507.0.0 环境验证：
+
+- A 兼容库：`datcompatibility = A`
+- B 兼容库：`datcompatibility = B`
+- B 兼容库可执行部分 MySQL 风格语法，例如反引号、`ifnull()`、`auto_increment`
+- 当前包仍基于 GaussDB Python DB-API 和 SQLAlchemy 方言适配，不是 MySQL 原生协议驱动
 
 后续可以继续补充：
 
