@@ -93,6 +93,28 @@ Alembic 的 DDL 实现按 SQLAlchemy `dialect.name` 查找。`gaussdb` 是第三
 
 其中主键、唯一约束、普通索引、序列默认值和 Alembic Operations 也可通过 `scripts/run_integration_probe.py` 在没有 pytest 的数据库主机上验证。
 
+## 兼容语法探针
+
+可使用 `scripts/run_syntax_probe.py` 对当前连接库执行 PostgreSQL、Oracle 风格、MySQL 风格 SQL 探测。
+
+已验证环境：
+
+```text
+GaussDB Kernel 507.0.0
+datcompatibility = A
+```
+
+结果摘要：
+
+- PostgreSQL 风格基础语法通过：`::` cast、`now()`、`limit`、`serial`
+- Oracle 风格基础语法通过：`dual`、`nvl`、`sysdate`、`rownum`
+- MySQL 风格部分不通过：反引号别名、`ifnull()`、`current_timestamp()`、`auto_increment`
+- MySQL 风格 `concat()` 在该环境可用，但不能据此认为支持 M 兼容
+
+结论：
+
+当前包可连接并使用 A/Oracle 兼容库中的 PG 基础语法和部分 Oracle 风格语法，但仍然不是 O 兼容专用 SQLAlchemy 方言；MySQL/M 兼容语法在当前 A 兼容库和 PG 协议路径下不成立。
+
 ## 待继续验证
 
 - GaussDB 505.1 专项环境

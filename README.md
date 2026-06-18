@@ -151,6 +151,13 @@ python scripts/run_integration_probe.py
 
 探针覆盖主键、唯一约束、普通索引反射、序列默认值和 Alembic Operations。
 
+如果要快速判断当前库对 PostgreSQL、Oracle 风格、MySQL 风格 SQL 的接受情况，可以运行：
+
+```bash
+GAUSSDB_TEST_URL='gaussdb+gaussdb://user:password@host:port/postgres' \
+python scripts/run_syntax_probe.py
+```
+
 ## Alembic 支持
 
 测试依赖中包含 Alembic。本项目会在 Alembic 可用时注册 `gaussdb` DDL 实现，复用 Alembic PostgreSQL 基础实现，当前已验证：
