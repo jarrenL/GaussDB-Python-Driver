@@ -2,6 +2,8 @@ import sys
 import types
 
 import pytest
+from sqlalchemy import func
+from sqlalchemy import select
 from sqlalchemy.dialects import registry
 from sqlalchemy.engine import make_url
 
@@ -78,6 +80,14 @@ def test_sqlalchemy_registry_can_load_installed_dialect():
 
 def test_driver_dialect_enables_statement_cache():
     assert GaussDBDialect_gaussdb.supports_statement_cache is True
+
+
+def test_current_timestamp_expression_compiles_without_parentheses():
+    compiled = select(func.current_timestamp()).compile(
+        dialect=GaussDBDialect_gaussdb()
+    )
+
+    assert str(compiled) == "SELECT CURRENT_TIMESTAMP AS current_timestamp_1"
 
 
 def test_import_dbapi_loads_gaussdb_lazily(monkeypatch):
