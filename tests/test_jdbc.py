@@ -2,6 +2,8 @@ import sys
 import types
 from datetime import date
 from datetime import datetime
+from datetime import timezone
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import Date
@@ -11,6 +13,8 @@ from sqlalchemy.dialects import registry
 from sqlalchemy.engine import make_url
 
 from gaussdb_sqlalchemy import jdbc_dbapi
+from gaussdb_sqlalchemy.jdbc import _convert_parameter
+from gaussdb_sqlalchemy.jdbc import _is_autocommit_rollback_error
 from gaussdb_sqlalchemy.jdbc import GaussDBDialect_jdbc
 
 
@@ -31,6 +35,32 @@ def test_create_connect_args_builds_jdbc_url_and_properties():
         {"user": "scott", "password": "tiger", "ssl": "true"},
         ["C:/drivers/gsjdbc4.jar"],
     ]
+
+
+def test_create_connect_args_splits_posix_multi_jar_paths():
+    dialect = GaussDBDialect_jdbc()
+
+    args, _ = dialect.create_connect_args(
+        make_url(
+            "gaussdb+jdbc://scott:tiger@db.example.com:8000/postgres"
+            "?jdbc_driver_path=/opt/driver/a.jar:/opt/driver/b.jar"
+        )
+    )
+
+    assert args[3] == ["/opt/driver/a.jar", "/opt/driver/b.jar"]
+
+
+def test_create_connect_args_keeps_windows_drive_path_on_posix():
+    dialect = GaussDBDialect_jdbc()
+
+    args, _ = dialect.create_connect_args(
+        make_url(
+            "gaussdb+jdbc://scott:tiger@db.example.com:8000/postgres"
+            "?jdbc_driver_path=C:/drivers/gsjdbc4.jar"
+        )
+    )
+
+    assert args[3] == ["C:/drivers/gsjdbc4.jar"]
 
 
 def test_create_connect_args_supports_custom_driver_class_and_jdbc_url():
@@ -102,6 +132,47 @@ def test_jdbc_date_result_processor_converts_datetime_to_date():
     assert processor(datetime(2026, 6, 18, 0, 0, 0)) == date(2026, 6, 18)
     assert processor(date(2026, 6, 18)) == date(2026, 6, 18)
     assert processor(None) is None
+
+
+def test_convert_parameter_normalizes_aware_datetime_to_utc(monkeypatch):
+    values = []
+
+    class FakeTimestamp:
+        @staticmethod
+        def valueOf(value):
+            values.append(value)
+            return f"timestamp:{value}"
+
+    class FakeJpype:
+        @staticmethod
+        def JClass(name):
+            assert name == "java.sql.Timestamp"
+            return FakeTimestamp
+
+    monkeypatch.setattr("gaussdb_sqlalchemy.jdbc._load_jpype", lambda: FakeJpype)
+
+    converted = _convert_parameter(
+        datetime(2026, 6, 18, 14, 30, tzinfo=timezone(timedelta(hours=8)))
+    )
+
+    assert converted == "timestamp:2026-06-18 06:30:00.000000"
+    assert values == ["2026-06-18 06:30:00.000000"]
+
+
+def test_autocommit_rollback_error_matching_is_exact():
+    assert _is_autocommit_rollback_error(Exception("autoCommit is enabled")) is True
+    assert (
+        _is_autocommit_rollback_error(
+            Exception("prefix autoCommit is enabled but another failure happened")
+        )
+        is False
+    )
+
+
+def test_jdbc_timestamp_parser_accepts_space_and_truncates_nanoseconds():
+    assert jdbc_dbapi._parse_jdbc_timestamp("2026-06-18 14:30:00.123456789") == (
+        datetime(2026, 6, 18, 14, 30, 0, 123456)
+    )
 
 
 def test_jdbc_dbapi_loads_jaydebeapi_lazily(monkeypatch):

@@ -83,12 +83,14 @@ class GaussDBDDLCompiler(PGDDLCompiler):
             )
         )
 
+        use_auto_increment = False
         if use_serial:
             colspec += " " + self.dialect.type_compiler_instance.process(
                 column.type,
                 type_expression=column,
                 identifier_preparer=self.preparer,
             )
+            use_auto_increment = True
         else:
             colspec += " " + self.dialect.type_compiler_instance.process(
                 column.type,
@@ -108,6 +110,8 @@ class GaussDBDDLCompiler(PGDDLCompiler):
             colspec += " NOT NULL"
         elif column.nullable and has_identity:
             colspec += " NULL"
+        if use_auto_increment:
+            colspec += " AUTO_INCREMENT"
         return colspec
 
 
@@ -296,9 +300,9 @@ class GaussDBDialect(PGDialect):
             if normalized_type == "datea":
                 format_type = "date"
             elif normalized_type == "varchar" or normalized_type.startswith("varchar("):
-                format_type = "character varying"
+                format_type = normalized_type.replace("varchar", "character varying", 1)
             elif normalized_type == "decimal" or normalized_type.startswith("decimal("):
-                format_type = "numeric"
+                format_type = normalized_type.replace("decimal", "numeric", 1)
             elif normalized_type == "tinyint" or normalized_type.startswith("tinyint("):
                 format_type = "smallint"
             elif normalized_type in {"blob", "longblob"} or normalized_type.startswith(
@@ -319,7 +323,7 @@ class GaussDBDialect(PGDialect):
                     ),
                     "nullable": not row["not_null"],
                     "default": default,
-                    "autoincrement": False,
+                    "autoincrement": self._is_autoincrement_column(default, format_type),
                     "comment": comment,
                 }
             )
@@ -535,6 +539,14 @@ class GaussDBDialect(PGDialect):
             except (TypeError, ValueError):
                 break
         return tuple(normalized) or version_info
+
+    @staticmethod
+    def _is_autoincrement_column(default, format_type):
+        default_text = str(default).lower() if default is not None else ""
+        format_text = str(format_type).lower() if format_type is not None else ""
+        return "nextval(" in default_text or "auto_increment" in default_text or (
+            "auto_increment" in format_text
+        )
 
     @staticmethod
     def _decode_if_bytes(value):

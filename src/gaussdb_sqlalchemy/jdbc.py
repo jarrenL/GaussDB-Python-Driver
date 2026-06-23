@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
+import re
 from datetime import date
 from datetime import datetime
+from datetime import timezone
 from decimal import Decimal
 from typing import Any
 from urllib.parse import parse_qsl
@@ -100,16 +103,19 @@ class GaussDBDialect_jdbc(GaussDBDialect):
         try:
             dbapi_connection.rollback()
         except Exception as exc:
-            if "autoCommit is enabled" not in str(exc):
+            if not _is_autocommit_rollback_error(exc):
                 raise
 
     @staticmethod
     def _split_driver_path(driver_path):
         if isinstance(driver_path, (tuple, list)):
             return list(driver_path)
-        # JDBC jar paths are most often supplied on Windows, where semicolon is
-        # the path-list separator. Avoid splitting "C:/..." on POSIX test hosts.
-        return [part for part in str(driver_path).split(";") if part]
+        value = str(driver_path)
+        if ";" in value:
+            return [part for part in value.split(";") if part]
+        if os.pathsep == ":" and re.search(r"\.jar:", value, re.IGNORECASE):
+            return [part for part in value.split(":") if part]
+        return [value] if value else []
 
     @staticmethod
     def _build_jdbc_url(url, opts: dict[str, Any], driver_class: str) -> str:
@@ -165,6 +171,8 @@ def _convert_parameter(value):
     if isinstance(value, datetime):
         jpype = _load_jpype()
         timestamp = jpype.JClass("java.sql.Timestamp")
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc).replace(tzinfo=None)
         return timestamp.valueOf(value.strftime("%Y-%m-%d %H:%M:%S.%f"))
     if isinstance(value, date):
         jpype = _load_jpype()
@@ -183,6 +191,15 @@ def _convert_parameter(value):
 
 def _load_jpype():
     return __import__("jpype")
+
+
+def _is_autocommit_rollback_error(exc):
+    message = str(exc).strip().lower()
+    expected_messages = {
+        "autocommit is enabled",
+        "cannot rollback when autocommit is enabled",
+    }
+    return message in expected_messages
 
 
 dialect = GaussDBDialect_jdbc

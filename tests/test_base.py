@@ -1,10 +1,12 @@
 from sqlalchemy import Column
 from sqlalchemy import Index
+from sqlalchemy import Integer
 from sqlalchemy import MetaData
 from sqlalchemy import String
 from sqlalchemy import Table
 from sqlalchemy import func
 from sqlalchemy.schema import CreateIndex
+from sqlalchemy.schema import CreateTable
 
 from gaussdb_sqlalchemy.base import GaussDBDialect
 
@@ -145,11 +147,44 @@ def test_get_columns_uses_gaussdb_compatible_reflection_query():
     assert [column["name"] for column in columns] == ["id", "name"]
     assert columns[0]["nullable"] is False
     assert columns[1]["nullable"] is True
+    assert columns[1]["type"].length == 32
     assert columns[1]["comment"] == "display name"
     assert connection.params == {"filter_names": ("demo",)}
     assert dict(dialect.get_multi_columns(connection, filter_names=["demo"])).get(
         (None, "demo")
     )
+
+
+def test_get_columns_preserves_numeric_precision_and_detects_autoincrement():
+    dialect = GaussDBDialect()
+    connection = _ReflectionConnection(
+        [
+            {
+                "schema_name": b"public",
+                "table_name": b"demo",
+                "name": b"id",
+                "format_type": b"integer",
+                "not_null": True,
+                "default": b"nextval('demo_id_seq'::regclass)",
+                "comment": None,
+            },
+            {
+                "schema_name": b"public",
+                "table_name": b"demo",
+                "name": b"amount",
+                "format_type": b"decimal(12,2)",
+                "not_null": False,
+                "default": None,
+                "comment": None,
+            },
+        ]
+    )
+
+    columns = dialect.get_columns(connection, "demo")
+
+    assert columns[0]["autoincrement"] is True
+    assert columns[1]["type"].precision == 12
+    assert columns[1]["type"].scale == 2
 
 
 def test_has_table_uses_gaussdb_compatible_reflection_query():
@@ -302,3 +337,15 @@ def test_m_compat_expression_index_uses_gaussdb_expression_parentheses():
     compiled = str(CreateIndex(index).compile(dialect=dialect))
 
     assert compiled == "CREATE INDEX ix_demo_lower_name ON demo ((lower(name)))"
+
+
+def test_m_compat_integer_primary_key_uses_auto_increment():
+    dialect = GaussDBDialect()
+    dialect.gaussdb_compatibility = "M"
+    metadata = MetaData()
+    table = Table("demo", metadata, Column("id", Integer, primary_key=True))
+
+    compiled = str(CreateTable(table).compile(dialect=dialect))
+
+    assert "id INTEGER NOT NULL AUTO_INCREMENT" in compiled
+    assert "SERIAL" not in compiled

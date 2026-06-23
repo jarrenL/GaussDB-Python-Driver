@@ -63,9 +63,13 @@ def _to_datetime(result_set, column):
     value = result_set.getTimestamp(column)
     if value is None:
         return None
-    text = str(value)
+    return _parse_jdbc_timestamp(str(value))
+
+
+def _parse_jdbc_timestamp(text):
     if "." in text:
         text = text[:26]
+    text = text.replace(" ", "T", 1)
     return datetime.fromisoformat(text)
 
 
