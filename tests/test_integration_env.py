@@ -128,6 +128,71 @@ def test_bulk_insert_against_gaussdb_url_from_env():
 
 
 @pytest.mark.integration
+def test_real_table_lifecycle_crud_against_gaussdb_url_from_env():
+    engine = _engine()
+    table_name = _table_name("gdbdrv_lifecycle_ut")
+    metadata = MetaData()
+    table = Table(
+        table_name,
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String(32), nullable=False),
+        Column("score", Integer, nullable=False),
+    )
+
+    try:
+        with engine.begin() as conn:
+            _drop_table(conn, table_name)
+            inspector = inspect(conn)
+            assert inspector.has_table(table_name) is False
+
+            table.create(conn)
+            inspector.clear_cache()
+            assert inspector.has_table(table_name) is True
+
+            columns = {column["name"]: column for column in inspector.get_columns(table_name)}
+            assert set(columns) == {"id", "name", "score"}
+            assert columns["id"]["nullable"] is False
+            assert columns["name"]["nullable"] is False
+            assert columns["score"]["nullable"] is False
+
+            conn.execute(
+                table.insert(),
+                [
+                    {"id": 1, "name": "alice", "score": 90},
+                    {"id": 2, "name": "bob", "score": 80},
+                    {"id": 3, "name": "carol", "score": 70},
+                ],
+            )
+
+            rows = conn.execute(
+                select(table.c.id, table.c.name, table.c.score)
+                .where(table.c.score >= 80)
+                .order_by(table.c.id)
+            ).all()
+            assert rows == [(1, "alice", 90), (2, "bob", 80)]
+
+            conn.execute(
+                table.update().where(table.c.id == 2).values(score=85)
+            )
+            assert conn.execute(
+                select(table.c.score).where(table.c.id == 2)
+            ).scalar_one() == 85
+
+            conn.execute(table.delete().where(table.c.score < 80))
+            remaining = conn.execute(
+                select(table.c.id, table.c.name, table.c.score).order_by(table.c.id)
+            ).all()
+            assert remaining == [(1, "alice", 90), (2, "bob", 85)]
+    finally:
+        with engine.begin() as conn:
+            _drop_table(conn, table_name)
+            inspector = inspect(conn)
+            inspector.clear_cache()
+            assert inspector.has_table(table_name) is False
+
+
+@pytest.mark.integration
 def test_orm_crud_against_gaussdb_url_from_env():
     engine = _engine()
     table_name = _table_name("gdbdrv_orm_ut")
