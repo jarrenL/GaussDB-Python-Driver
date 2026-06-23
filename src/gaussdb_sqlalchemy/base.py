@@ -226,6 +226,7 @@ class GaussDBDialect(PGDialect):
             return super().set_isolation_level(dbapi_connection, level)
 
         cursor = dbapi_connection.cursor()
+        cursor.execute("COMMIT")
         cursor.execute(f"SET SESSION TRANSACTION ISOLATION LEVEL {level}")
         cursor.execute("COMMIT")
         cursor.close()

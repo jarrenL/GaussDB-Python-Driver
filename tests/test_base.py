@@ -172,6 +172,7 @@ def test_m_compat_isolation_level_uses_mysql_style_session_syntax():
     dialect.set_isolation_level(connection, "READ COMMITTED")
 
     assert connection.statements == [
+        "COMMIT",
         "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED",
         "COMMIT",
     ]
@@ -198,6 +199,7 @@ def test_isolation_level_detects_m_compatibility_from_raw_connection():
 
     assert connection.statements[0].strip().startswith("select datcompatibility")
     assert connection.statements[1:] == [
+        "COMMIT",
         "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED",
         "COMMIT",
     ]

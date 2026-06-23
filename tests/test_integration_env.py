@@ -446,13 +446,13 @@ def test_native_enum_roundtrip_against_gaussdb_url_from_env():
 
 @pytest.mark.integration
 def test_isolation_level_against_gaussdb_url_from_env():
-    engine = _engine(isolation_level="READ COMMITTED")
+    engine = _engine(isolation_level="REPEATABLE READ")
 
     with engine.connect() as conn:
         level = conn.execute(text("show transaction_isolation")).scalar_one()
 
     assert level is not None
-    assert str(level).replace(" ", "_").upper() == "READ_COMMITTED"
+    assert str(level).replace(" ", "_").upper() == "REPEATABLE_READ"
 
 
 @pytest.mark.integration
