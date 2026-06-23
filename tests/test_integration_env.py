@@ -493,6 +493,66 @@ def test_alembic_operations_against_gaussdb_url_from_env():
 
 
 @pytest.mark.integration
+def test_alembic_rename_column_against_gaussdb_url_from_env():
+    alembic = pytest.importorskip("alembic")
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    assert alembic
+
+    engine = _engine()
+    table_name = _table_name("gdbdrv_alembic_rename_ut")
+
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(f"create table {table_name} (id int primary key, old_name varchar(32))")
+            )
+            context = MigrationContext.configure(conn)
+            operations = Operations(context)
+            with operations.batch_alter_table(table_name) as batch:
+                batch.alter_column(
+                    "old_name",
+                    new_column_name="new_name",
+                    existing_type=String(32),
+                )
+            conn.execute(
+                text(f"insert into {table_name} (id, new_name) values (:id, :name)"),
+                {"id": 1, "name": "renamed"},
+            )
+            row = conn.execute(text(f"select new_name from {table_name} where id=1")).one()
+            assert row == ("renamed",)
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text(f"drop table if exists {table_name}"))
+
+
+@pytest.mark.integration
+def test_alembic_alter_column_type_against_gaussdb_url_from_env():
+    alembic = pytest.importorskip("alembic")
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    assert alembic
+
+    engine = _engine()
+    table_name = _table_name("gdbdrv_alembic_type_ut")
+
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(f"create table {table_name} (id int primary key, val varchar(16))"))
+            context = MigrationContext.configure(conn)
+            operations = Operations(context)
+            with operations.batch_alter_table(table_name) as batch:
+                batch.alter_column("val", type_=String(64), existing_type=String(16))
+            columns = {column["name"]: column for column in inspect(conn).get_columns(table_name)}
+            assert columns["val"]["type"].length == 64
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text(f"drop table if exists {table_name}"))
+
+
+@pytest.mark.integration
 def test_common_data_types_against_gaussdb_url_from_env():
     engine = _engine()
     table_name = _table_name("gdbdrv_types_ut")
