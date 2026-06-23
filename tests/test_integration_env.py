@@ -553,6 +553,42 @@ def test_alembic_alter_column_type_against_gaussdb_url_from_env():
 
 
 @pytest.mark.integration
+def test_alembic_alter_column_nullable_against_gaussdb_url_from_env():
+    alembic = pytest.importorskip("alembic")
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+
+    assert alembic
+
+    engine = _engine()
+    table_name = _table_name("gdbdrv_alembic_nullable_ut")
+
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    f"create table {table_name} ("
+                    "id int primary key, val varchar(32) not null)"
+                )
+            )
+            context = MigrationContext.configure(conn)
+            operations = Operations(context)
+
+            with operations.batch_alter_table(table_name) as batch:
+                batch.alter_column("val", nullable=True, existing_type=String(32))
+            columns = {column["name"]: column for column in inspect(conn).get_columns(table_name)}
+            assert columns["val"]["nullable"] is True
+
+            with operations.batch_alter_table(table_name) as batch:
+                batch.alter_column("val", nullable=False, existing_type=String(32))
+            columns = {column["name"]: column for column in inspect(conn).get_columns(table_name)}
+            assert columns["val"]["nullable"] is False
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text(f"drop table if exists {table_name}"))
+
+
+@pytest.mark.integration
 def test_common_data_types_against_gaussdb_url_from_env():
     engine = _engine()
     table_name = _table_name("gdbdrv_types_ut")

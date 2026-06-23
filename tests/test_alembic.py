@@ -111,3 +111,47 @@ def test_m_alembic_type_change_uses_modify_column():
     operations.alter_column("demo", "value", type_=String(64), existing_type=String(16))
 
     assert output.getvalue().strip() == "ALTER TABLE demo MODIFY COLUMN value VARCHAR(64);"
+
+
+def test_m_alembic_nullable_true_uses_modify_column_null():
+    pytest.importorskip("alembic")
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from io import StringIO
+
+    register_alembic_impl()
+    output = StringIO()
+    dialect = GaussDBDialect_jdbc()
+    dialect.gaussdb_compatibility = "M"
+    context = MigrationContext.configure(
+        dialect=dialect,
+        opts={"as_sql": True, "output_buffer": output},
+    )
+    operations = Operations(context)
+
+    operations.alter_column("demo", "value", nullable=True, existing_type=String(16))
+
+    assert output.getvalue().strip() == "ALTER TABLE demo MODIFY COLUMN value VARCHAR(16) NULL;"
+
+
+def test_m_alembic_nullable_false_uses_modify_column_not_null():
+    pytest.importorskip("alembic")
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from io import StringIO
+
+    register_alembic_impl()
+    output = StringIO()
+    dialect = GaussDBDialect_jdbc()
+    dialect.gaussdb_compatibility = "M"
+    context = MigrationContext.configure(
+        dialect=dialect,
+        opts={"as_sql": True, "output_buffer": output},
+    )
+    operations = Operations(context)
+
+    operations.alter_column("demo", "value", nullable=False, existing_type=String(16))
+
+    assert output.getvalue().strip() == (
+        "ALTER TABLE demo MODIFY COLUMN value VARCHAR(16) NOT NULL;"
+    )
