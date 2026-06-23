@@ -1,3 +1,11 @@
+from sqlalchemy import Column
+from sqlalchemy import Index
+from sqlalchemy import MetaData
+from sqlalchemy import String
+from sqlalchemy import Table
+from sqlalchemy import func
+from sqlalchemy.schema import CreateIndex
+
 from gaussdb_sqlalchemy.base import GaussDBDialect
 
 
@@ -180,6 +188,7 @@ def test_get_indexes_uses_gaussdb_compatible_query():
                 "index_name": b"ix_demo_name",
                 "column_name": b"name",
                 "is_unique": False,
+                "definition": b"CREATE INDEX ix_demo_name ON demo USING btree (name)",
                 "ordinality": 1,
             },
         ]
@@ -191,6 +200,41 @@ def test_get_indexes_uses_gaussdb_compatible_query():
             "unique": False,
             "column_names": ["name"],
             "include_columns": [],
-            "dialect_options": {},
         }
     ]
+
+
+def test_get_indexes_keeps_expression_indexes_without_column_names():
+    dialect = GaussDBDialect()
+    connection = _ReflectionConnection(
+        [
+            {
+                "index_name": b"ix_demo_lower_name",
+                "column_name": None,
+                "is_unique": False,
+                "definition": b"CREATE INDEX ix_demo_lower_name ON demo USING btree (lower((name)::text))",
+                "ordinality": None,
+            },
+        ]
+    )
+
+    assert dialect.get_indexes(connection, "demo") == [
+        {
+            "name": "ix_demo_lower_name",
+            "unique": False,
+            "column_names": [],
+            "include_columns": [],
+        }
+    ]
+
+
+def test_m_compat_expression_index_uses_gaussdb_expression_parentheses():
+    dialect = GaussDBDialect()
+    dialect.gaussdb_compatibility = "M"
+    metadata = MetaData()
+    table = Table("demo", metadata, Column("name", String(32)))
+    index = Index("ix_demo_lower_name", func.lower(table.c.name))
+
+    compiled = str(CreateIndex(index).compile(dialect=dialect))
+
+    assert compiled == "CREATE INDEX ix_demo_lower_name ON demo ((lower(name)))"

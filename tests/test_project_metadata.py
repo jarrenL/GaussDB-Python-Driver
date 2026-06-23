@@ -13,9 +13,10 @@ def test_pyproject_declares_sqlalchemy_entry_points():
     pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
     entry_points = pyproject["project"]["entry-points"]["sqlalchemy.dialects"]
 
-    target = "gaussdb_sqlalchemy.dialect:GaussDBDialect_gaussdb"
+    target = "gaussdb_sqlalchemy.jdbc:GaussDBDialect_jdbc"
     assert entry_points["gaussdb"] == target
-    assert entry_points["gaussdb.gaussdb"] == target
+    assert entry_points["gaussdb.jdbc"] == target
+    assert "gaussdb.gaussdb" not in entry_points
 
 
 def test_readme_is_chinese_project_documentation():
@@ -23,4 +24,4 @@ def test_readme_is_chinese_project_documentation():
 
     assert "# GaussDB SQLAlchemy Python 驱动" in readme
     assert "轻量化集中式 505.1" in readme
-    assert "gaussdb+gaussdb://" in readme
+    assert "gaussdb+jdbc://" in readme

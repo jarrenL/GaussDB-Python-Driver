@@ -6,6 +6,8 @@ import argparse
 import importlib
 import os
 import sys
+from pathlib import Path
+from urllib.parse import parse_qsl
 from urllib.parse import urlsplit
 from urllib.parse import urlunsplit
 
@@ -48,14 +50,25 @@ def main() -> int:
     print(f"Executable: {sys.executable}")
     print(f"PATH: {os.environ.get('PATH', '')}")
 
-    gaussdb = _check_import("gaussdb")
     sqlalchemy = _check_import("sqlalchemy")
     dialect = _check_import("gaussdb_sqlalchemy")
+    jaydebeapi = _check_import("jaydebeapi")
+    jpype = _check_import("jpype")
+    if args.url:
+        query = dict(parse_qsl(urlsplit(args.url).query, keep_blank_values=True))
+        jar = query.get("jdbc_driver_path")
+        if jar:
+            jar_path = Path(jar)
+            if jar_path.exists():
+                print(f"[ OK ] JDBC driver jar: {jar_path}")
+            else:
+                print(f"[FAIL] JDBC driver jar not found: {jar_path}")
+                return 1
 
-    if not all((gaussdb, sqlalchemy, dialect)):
+    if not all((sqlalchemy, dialect, jaydebeapi, jpype)):
         print()
-        print("请确认已安装 gaussdb、SQLAlchemy 和本项目 wheel。")
-        print("Windows 上还需要将 GaussDB 客户端 bin 目录加入 PATH。")
+        print("请确认已安装 JayDeBeApi、JPype1、SQLAlchemy 和本项目 wheel。")
+        print("Windows 上还需要安装 Java Runtime，并提供 GaussDB JDBC jar。")
         return 1
 
     if not args.url:
@@ -70,13 +83,11 @@ def main() -> int:
         engine = create_engine(args.url, pool_pre_ping=True)
         with engine.connect() as conn:
             value = conn.execute(text("select 1")).scalar_one()
-            encoding = conn.execute(text("show client_encoding")).scalar_one()
     except Exception as exc:
         print(f"[FAIL] live connection: {type(exc).__name__}: {exc}")
         return 2
 
     print(f"[ OK ] live connection: select 1 -> {value}")
-    print(f"[ OK ] client_encoding: {encoding}")
     return 0
 
 

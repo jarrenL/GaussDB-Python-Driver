@@ -1,15 +1,25 @@
 import os
 import uuid
+from datetime import date
+from datetime import datetime
+from decimal import Decimal
 
 import pytest
+from sqlalchemy import Boolean
 from sqlalchemy import Column
+from sqlalchemy import Date
+from sqlalchemy import DateTime
 from sqlalchemy import Index
 from sqlalchemy import Integer
+from sqlalchemy import LargeBinary
 from sqlalchemy import MetaData
+from sqlalchemy import Numeric
 from sqlalchemy import String
 from sqlalchemy import Table
+from sqlalchemy import Text
 from sqlalchemy import UniqueConstraint
 from sqlalchemy import create_engine
+from sqlalchemy import func
 from sqlalchemy import inspect
 from sqlalchemy import select
 from sqlalchemy import text
@@ -36,10 +46,22 @@ def _drop_table(conn, table_name):
     conn.execute(text(f"drop table if exists {table_name}"))
 
 
+def _compatibility(conn):
+    return conn.execute(
+        text(
+            """
+            select datcompatibility
+            from pg_database
+            where datname = current_database()
+            """
+        )
+    ).scalar_one()
+
+
 @pytest.mark.integration
 def test_sqlalchemy_core_roundtrip_against_gaussdb_url_from_env():
     engine = _engine()
-    table_name = _table_name("codex_core_ut")
+    table_name = _table_name("gdbdrv_core_ut")
 
     with engine.begin() as conn:
         _drop_table(conn, table_name)
@@ -61,7 +83,7 @@ def test_sqlalchemy_core_roundtrip_against_gaussdb_url_from_env():
 @pytest.mark.integration
 def test_transaction_rollback_against_gaussdb_url_from_env():
     engine = _engine()
-    table_name = _table_name("codex_tx_ut")
+    table_name = _table_name("gdbdrv_tx_ut")
 
     with engine.begin() as conn:
         _drop_table(conn, table_name)
@@ -89,7 +111,7 @@ def test_transaction_rollback_against_gaussdb_url_from_env():
 @pytest.mark.integration
 def test_bulk_insert_against_gaussdb_url_from_env():
     engine = _engine()
-    table_name = _table_name("codex_bulk_ut")
+    table_name = _table_name("gdbdrv_bulk_ut")
 
     with engine.begin() as conn:
         _drop_table(conn, table_name)
@@ -108,7 +130,7 @@ def test_bulk_insert_against_gaussdb_url_from_env():
 @pytest.mark.integration
 def test_orm_crud_against_gaussdb_url_from_env():
     engine = _engine()
-    table_name = _table_name("codex_orm_ut")
+    table_name = _table_name("gdbdrv_orm_ut")
     Base = declarative_base()
 
     class DriverUser(Base):
@@ -147,7 +169,7 @@ def test_orm_crud_against_gaussdb_url_from_env():
 @pytest.mark.integration
 def test_metadata_reflection_against_gaussdb_url_from_env():
     engine = _engine()
-    table_name = _table_name("codex_reflect_ut")
+    table_name = _table_name("gdbdrv_reflect_ut")
     metadata = MetaData()
     table = Table(
         table_name,
@@ -176,7 +198,7 @@ def test_metadata_reflection_against_gaussdb_url_from_env():
 @pytest.mark.integration
 def test_index_unique_and_pk_reflection_against_gaussdb_url_from_env():
     engine = _engine()
-    table_name = _table_name("codex_idx_ut")
+    table_name = _table_name("gdbdrv_idx_ut")
     index_name = f"ix_{table_name}_name"
     unique_name = f"uq_{table_name}_code"
     metadata = MetaData()
@@ -216,31 +238,42 @@ def test_index_unique_and_pk_reflection_against_gaussdb_url_from_env():
 @pytest.mark.integration
 def test_serial_like_default_and_sequence_against_gaussdb_url_from_env():
     engine = _engine()
-    table_name = _table_name("codex_seq_ut")
+    table_name = _table_name("gdbdrv_seq_ut")
     sequence_name = f"{table_name}_id_seq"
 
     with engine.begin() as conn:
         conn.execute(text(f"drop table if exists {table_name}"))
-        conn.execute(text(f"drop sequence if exists {sequence_name}"))
-        conn.execute(text(f"create sequence {sequence_name} start 1"))
-        conn.execute(
-            text(
-                f"create table {table_name} ("
-                "id int primary key default nextval("
-                f"'{sequence_name}'"
-                "), name varchar(32))"
+        compatibility = _compatibility(conn)
+        if compatibility == "M":
+            conn.execute(
+                text(
+                    f"create table {table_name} ("
+                    "id int primary key auto_increment, name varchar(32))"
+                )
             )
-        )
+        else:
+            conn.execute(text(f"drop sequence if exists {sequence_name}"))
+            conn.execute(text(f"create sequence {sequence_name} start 1"))
+            conn.execute(
+                text(
+                    f"create table {table_name} ("
+                    "id int primary key default nextval("
+                    f"'{sequence_name}'"
+                    "), name varchar(32))"
+                )
+            )
         conn.execute(text(f"insert into {table_name} (name) values (:name)"), {"name": "a"})
         conn.execute(text(f"insert into {table_name} (name) values (:name)"), {"name": "b"})
         rows = conn.execute(text(f"select id, name from {table_name} order by id")).all()
         assert rows == [(1, "a"), (2, "b")]
 
         columns = {column["name"]: column for column in inspect(conn).get_columns(table_name)}
-        assert "nextval" in columns["id"]["default"]
+        if compatibility != "M":
+            assert "nextval" in columns["id"]["default"]
 
         conn.execute(text(f"drop table {table_name}"))
-        conn.execute(text(f"drop sequence {sequence_name}"))
+        if compatibility != "M":
+            conn.execute(text(f"drop sequence {sequence_name}"))
 
 
 @pytest.mark.integration
@@ -252,7 +285,7 @@ def test_alembic_operations_against_gaussdb_url_from_env():
     assert alembic
 
     engine = _engine()
-    table_name = _table_name("codex_alembic_ut")
+    table_name = _table_name("gdbdrv_alembic_ut")
 
     with engine.begin() as conn:
         context = MigrationContext.configure(conn)
@@ -278,6 +311,177 @@ def test_alembic_operations_against_gaussdb_url_from_env():
         assert row == (1, "created", "via alembic")
 
         operations.drop_table(table_name)
+
+
+@pytest.mark.integration
+def test_common_data_types_against_gaussdb_url_from_env():
+    engine = _engine()
+    table_name = _table_name("gdbdrv_types_ut")
+    metadata = MetaData()
+    table = Table(
+        table_name,
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("amount", Numeric(12, 2), nullable=False),
+        Column("created_at", DateTime, nullable=False),
+        Column("business_date", Date, nullable=False),
+        Column("enabled", Boolean, nullable=False),
+        Column("description", Text, nullable=False),
+        Column("payload", LargeBinary, nullable=False),
+    )
+
+    try:
+        metadata.create_all(engine)
+        expected_payload = b"\x00gaussdb\xff"
+        expected_created_at = datetime(2026, 6, 18, 14, 30, 0)
+        expected_date = date(2026, 6, 18)
+
+        with engine.begin() as conn:
+            conn.execute(
+                table.insert().values(
+                    id=1,
+                    amount=Decimal("12345.67"),
+                    created_at=expected_created_at,
+                    business_date=expected_date,
+                    enabled=True,
+                    description="GaussDB text roundtrip",
+                    payload=expected_payload,
+                )
+            )
+            row = conn.execute(select(table).where(table.c.id == 1)).one()
+
+        assert row.amount == Decimal("12345.67")
+        assert row.created_at == expected_created_at
+        assert row.business_date == expected_date
+        assert row.enabled is True
+        assert row.description == "GaussDB text roundtrip"
+        assert bytes(row.payload) == expected_payload
+
+        columns = {column["name"]: column for column in inspect(engine).get_columns(table_name)}
+        assert set(columns) == {
+            "id",
+            "amount",
+            "created_at",
+            "business_date",
+            "enabled",
+            "description",
+            "payload",
+        }
+    finally:
+        metadata.drop_all(engine)
+
+
+@pytest.mark.integration
+def test_alembic_autogenerate_detects_no_diff_against_gaussdb_url_from_env():
+    pytest.importorskip("alembic")
+    from alembic.autogenerate import compare_metadata
+    from alembic.migration import MigrationContext
+
+    engine = _engine()
+    table_name = _table_name("gdbdrv_autogen_ut")
+    metadata = MetaData()
+    Table(
+        table_name,
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String(32), nullable=False),
+        UniqueConstraint("name", name=f"uq_{table_name}_name"),
+    )
+
+    try:
+        metadata.create_all(engine)
+        with engine.connect() as conn:
+            context = MigrationContext.configure(
+                conn,
+                opts={
+                    "include_name": lambda name, type_, parent_names: (
+                        type_ != "table" or name == table_name
+                    )
+                },
+            )
+            diffs = compare_metadata(context, metadata)
+        assert diffs == []
+    finally:
+        metadata.drop_all(engine)
+
+
+@pytest.mark.integration
+def test_advanced_reflection_against_gaussdb_url_from_env():
+    engine = _engine()
+    table_name = _table_name("gdbdrv_adv_ut")
+    view_name = _table_name("gdbdrv_view_ut")
+    complex_index = f"ix_{table_name}_code_name"
+    expression_index = f"ix_{table_name}_lower_name"
+
+    with engine.begin() as conn:
+        compatibility = _compatibility(conn)
+        conn.execute(text(f"drop view if exists {view_name}"))
+        conn.execute(text(f"drop table if exists {table_name}"))
+        conn.execute(
+            text(
+                f"create table {table_name} ("
+                "id int primary key, code varchar(32), name varchar(32))"
+            )
+        )
+        conn.execute(text(f"create index {complex_index} on {table_name} (code, name)"))
+        probe_table = Table(
+            table_name,
+            MetaData(),
+            Column("id", Integer),
+            Column("code", String(32)),
+            Column("name", String(32)),
+        )
+        Index(expression_index, func.lower(probe_table.c.name)).create(conn)
+        conn.execute(
+            text(
+                f"create view {view_name} as "
+                f"select id, code, name from {table_name} where id > 0"
+            )
+        )
+
+    try:
+        inspector = inspect(engine)
+        indexes = inspector.get_indexes(table_name)
+        assert any(
+            index["name"] == complex_index
+            and index["column_names"] == ["code", "name"]
+            for index in indexes
+        )
+        assert any(index["name"] == expression_index for index in indexes)
+
+        view_columns = inspector.get_columns(view_name)
+        assert [column["name"] for column in view_columns] == ["id", "code", "name"]
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text(f"drop view if exists {view_name}"))
+            conn.execute(text(f"drop table if exists {table_name}"))
+
+
+@pytest.mark.integration
+def test_partition_table_reflection_when_supported_against_gaussdb_url_from_env():
+    engine = _engine()
+    table_name = _table_name("gdbdrv_part_ut")
+
+    with engine.begin() as conn:
+        conn.execute(text(f"drop table if exists {table_name}"))
+        try:
+            conn.execute(
+                text(
+                    f"create table {table_name} (id int primary key, name varchar(32)) "
+                    "partition by range (id) ("
+                    "partition p_lt_100 values less than (100), "
+                    "partition p_max values less than (maxvalue))"
+                )
+            )
+        except Exception as exc:
+            pytest.skip(f"partition table DDL is not supported by this environment: {exc}")
+
+    try:
+        columns = inspect(engine).get_columns(table_name)
+        assert [column["name"] for column in columns] == ["id", "name"]
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text(f"drop table if exists {table_name}"))
 
 
 @pytest.mark.integration

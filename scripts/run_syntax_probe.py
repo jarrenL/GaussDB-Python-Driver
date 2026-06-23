@@ -59,7 +59,7 @@ def run(url: str) -> list[tuple[str, str, str]]:
     ddl_checks = [
         (
             "pg serial table",
-            f"codex_syntax_pg_{suffix}",
+            f"gdbdrv_syntax_pg_{suffix}",
             [
                 "create table {table} (id serial primary key, name varchar(20))",
                 "insert into {table} (name) values ('ok')",
@@ -68,7 +68,7 @@ def run(url: str) -> list[tuple[str, str, str]]:
         ),
         (
             "mysql auto_increment table",
-            f"codex_syntax_my_{suffix}",
+            f"gdbdrv_syntax_my_{suffix}",
             [
                 "create table {table} "
                 "(id int auto_increment primary key, name varchar(20))",

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gaussdb-sqlalchemy-driver"
 version = "0.1.0"
-description = "Lightweight SQLAlchemy dialect and DB-API bridge for Huawei GaussDB centralized 505.1."
+description = "Lightweight SQLAlchemy JDBC dialect for Huawei GaussDB centralized 505.1."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "Apache-2.0"
@@ -27,7 +27,8 @@ classifiers = [
 ]
 dependencies = [
     "SQLAlchemy>=2.0,<2.2",
-    "gaussdb>=1.0.4",
+    "JayDeBeApi>=1.2.3",
+    "JPype1>=1.5",
 ]
 
 [project.optional-dependencies]
@@ -41,8 +42,8 @@ Homepage = "https://github.com/jarrenL/GaussDB-Python-Driver"
 Issues = "https://github.com/jarrenL/GaussDB-Python-Driver/issues"
 
 [project.entry-points."sqlalchemy.dialects"]
-gaussdb = "gaussdb_sqlalchemy.dialect:GaussDBDialect_gaussdb"
-"gaussdb.gaussdb" = "gaussdb_sqlalchemy.dialect:GaussDBDialect_gaussdb"
+gaussdb = "gaussdb_sqlalchemy.jdbc:GaussDBDialect_jdbc"
+"gaussdb.jdbc" = "gaussdb_sqlalchemy.jdbc:GaussDBDialect_jdbc"
 
 [tool.setuptools.packages.find]
 where = ["src"]
