@@ -157,6 +157,10 @@ Windows 实机测试步骤、前置条件、测试场景和真实数据库地址
 
 已在 GaussDB Kernel 507.0.0 环境验证过 A 兼容、B 兼容和 M 兼容基础能力。GaussDB 505.1、Windows 实机和客户真实库仍需按测试指导手册继续验证。
 
+## 并发限制
+
+本项目通过 JayDeBeApi/JPype 在 Python 进程内调用 JVM。`threadsafety = 1`，表示模块可被多线程共享，但连接对象不应跨线程共享。建议每个线程独立从 SQLAlchemy engine 获取连接，并避免在 JVM 首次启动阶段做高并发连接初始化。
+
 ## 打包
 
 ```bash

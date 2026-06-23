@@ -342,6 +342,78 @@ def test_serial_like_default_and_sequence_against_gaussdb_url_from_env():
 
 
 @pytest.mark.integration
+def test_m_auto_increment_insert_without_id_against_gaussdb_url_from_env():
+    engine = _engine()
+    table_name = _table_name("gdbdrv_m_autoinc_ut")
+    metadata = MetaData()
+    table = Table(
+        table_name,
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("name", String(32), nullable=False),
+    )
+
+    with engine.connect() as conn:
+        compatibility = _compatibility(conn)
+    if compatibility != "M":
+        pytest.skip("M auto_increment behavior only applies to M compatibility")
+
+    try:
+        metadata.create_all(engine)
+        with engine.begin() as conn:
+            conn.execute(table.insert().values(name="a"))
+            conn.execute(table.insert().values(name="b"))
+            rows = conn.execute(
+                select(table.c.id, table.c.name).order_by(table.c.id)
+            ).all()
+            assert rows == [(1, "a"), (2, "b")]
+    finally:
+        metadata.drop_all(engine)
+
+
+@pytest.mark.integration
+def test_m_reserved_word_identifier_against_gaussdb_url_from_env():
+    engine = _engine()
+    table_name = _table_name("gdbdrv_m_reserved_ut")
+    metadata = MetaData()
+    table = Table(
+        table_name,
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("select", String(32)),
+    )
+
+    with engine.connect() as conn:
+        compatibility = _compatibility(conn)
+    if compatibility != "M":
+        pytest.skip("M identifier quoting only applies to M compatibility")
+
+    try:
+        metadata.create_all(engine)
+        columns = {column["name"] for column in inspect(engine).get_columns(table_name)}
+        assert "select" in columns
+    finally:
+        metadata.drop_all(engine)
+
+
+@pytest.mark.integration
+def test_table_comment_reflection_against_gaussdb_url_from_env():
+    engine = _engine()
+    table_name = _table_name("gdbdrv_comment_ut")
+
+    with engine.begin() as conn:
+        conn.execute(text(f"drop table if exists {table_name}"))
+        conn.execute(text(f"create table {table_name} (id int primary key)"))
+        conn.execute(text(f"comment on table {table_name} is 'test comment'"))
+
+    try:
+        assert inspect(engine).get_table_comment(table_name) == {"text": "test comment"}
+    finally:
+        with engine.begin() as conn:
+            conn.execute(text(f"drop table if exists {table_name}"))
+
+
+@pytest.mark.integration
 def test_alembic_operations_against_gaussdb_url_from_env():
     alembic = pytest.importorskip("alembic")
     from alembic.migration import MigrationContext

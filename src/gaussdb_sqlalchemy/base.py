@@ -7,6 +7,7 @@ import re
 from sqlalchemy import bindparam
 from sqlalchemy.dialects.postgresql.base import PGDialect
 from sqlalchemy.dialects.postgresql.base import PGDDLCompiler
+from sqlalchemy.dialects.postgresql.base import PGIdentifierPreparer
 from sqlalchemy.dialects.postgresql.base import PGTypeCompiler
 from sqlalchemy.exc import NoSuchTableError
 from sqlalchemy import schema as sa_schema
@@ -115,7 +116,19 @@ class GaussDBDDLCompiler(PGDDLCompiler):
         return colspec
 
 
+class GaussDBIdentifierPreparer(PGIdentifierPreparer):
+    def quote_identifier(self, value):
+        if self.dialect.gaussdb_compatibility == "M":
+            return "`" + str(value).replace("`", "``") + "`"
+        return super().quote_identifier(value)
+
+
 class GaussDBTypeCompiler(PGTypeCompiler):
+    def visit_BOOLEAN(self, type_, **kw):
+        if self.dialect.gaussdb_compatibility == "M":
+            return "SMALLINT"
+        return super().visit_BOOLEAN(type_, **kw)
+
     def visit_TIMESTAMP(self, type_, **kw):
         if self.dialect.gaussdb_compatibility == "M":
             if getattr(type_, "precision", None) is not None:
@@ -139,6 +152,7 @@ class GaussDBDialect(PGDialect):
 
     name = "gaussdb"
     ddl_compiler = GaussDBDDLCompiler
+    preparer = GaussDBIdentifierPreparer
     type_compiler = GaussDBTypeCompiler
     supports_statement_cache = True
     supports_native_enum = True
@@ -161,8 +175,17 @@ class GaussDBDialect(PGDialect):
             self.server_version_info
         )
         self.gaussdb_compatibility = self._get_database_compatibility(connection)
+        self._apply_compatibility_features()
+
+    def _apply_compatibility_features(self):
         if self.gaussdb_compatibility == "M":
             self.supports_native_boolean = False
+            self.insert_returning = False
+            self.update_returning = False
+            self.delete_returning = False
+            self.insert_executemany_returning = False
+            self.preexecute_autoincrement_sequences = False
+            self.insert_null_pk_still_autoincrements = True
 
     def _get_server_version_info(self, connection):
         version = connection.exec_driver_sql("select pg_catalog.version()").scalar()
@@ -480,7 +503,28 @@ class GaussDBDialect(PGDialect):
         return indexes.items()
 
     def get_table_comment(self, connection, table_name, schema=None, **kw):
-        return {"text": None}
+        condition = "c.relname = :table_name"
+        params = {"table_name": table_name}
+        if schema is not None:
+            condition += " and n.nspname = :schema"
+            params["schema"] = schema
+        else:
+            condition += " and pg_catalog.pg_table_is_visible(c.oid)"
+
+        query = text(
+            f"""
+            select pg_catalog.obj_description(c.oid, 'pg_class') as comment
+            from pg_catalog.pg_class c
+            join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+            where {condition}
+              and c.relkind in ('r', 'p', 'f', 'v', 'm')
+            limit 1
+            """
+        )
+        row = connection.execute(query, params).mappings().first()
+        if row is None:
+            raise NoSuchTableError(table_name)
+        return {"text": self._decode_if_bytes(row["comment"])}
 
     def get_multi_table_comment(
         self, connection, schema=None, filter_names=None, scope=None, kind=None, **kw
@@ -489,7 +533,9 @@ class GaussDBDialect(PGDialect):
         for table_name in self._get_reflection_table_names(
             connection, schema, filter_names
         ):
-            comments[(schema, table_name)] = {"text": None}
+            comments[(schema, table_name)] = self.get_table_comment(
+                connection, table_name, schema=schema, **kw
+            )
         return comments.items()
 
     def _get_reflection_table_names(self, connection, schema=None, filter_names=None):

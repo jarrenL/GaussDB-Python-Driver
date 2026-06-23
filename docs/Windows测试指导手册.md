@@ -450,7 +450,17 @@ $env:GAUSSDB_TEST_URL="gaussdb+jdbc://用户名:URL编码后的密码@数据库I
 pytest -m integration -rs
 ```
 
-### 6.5 语法探针有 FAIL
+### 6.5 多线程并发连接失败
+
+本项目通过 JayDeBeApi/JPype 在 Python 进程内调用 JVM。当前 DB-API `threadsafety = 1`，连接对象不应跨线程共享。
+
+建议：
+
+- 每个线程通过 SQLAlchemy engine 独立获取连接。
+- 不要在多个线程之间传递同一个 connection 或 session。
+- 应用启动阶段先做一次单线程连接预热，再进入高并发请求处理。
+
+### 6.6 语法探针有 FAIL
 
 `run_syntax_probe.py` 的目标是识别当前库支持哪些 SQL 风格。部分 FAIL 不一定是驱动问题，可能是 A/B 兼容模式差异。例如 A 兼容库不支持 MySQL 风格 `auto_increment` 属于预期差异。
 

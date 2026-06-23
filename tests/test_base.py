@@ -2,6 +2,7 @@ from sqlalchemy import Column
 from sqlalchemy import Index
 from sqlalchemy import Integer
 from sqlalchemy import MetaData
+from sqlalchemy import Boolean
 from sqlalchemy import String
 from sqlalchemy import Table
 from sqlalchemy import func
@@ -32,7 +33,10 @@ class _Rows:
         self.rows = rows
 
     def mappings(self):
-        return self.rows
+        return self
+
+    def __iter__(self):
+        return iter(self.rows)
 
     def first(self):
         return self.rows[0] if self.rows else None
@@ -115,6 +119,21 @@ def test_get_default_schema_name_decodes_bytes():
     connection = _Connection({"select current_schema()": b"public"})
 
     assert dialect._get_default_schema_name(connection) == "public"
+
+
+def test_m_compat_disables_returning_and_native_boolean():
+    dialect = GaussDBDialect()
+    dialect.gaussdb_compatibility = "M"
+
+    dialect._apply_compatibility_features()
+
+    assert dialect.supports_native_boolean is False
+    assert dialect.insert_returning is False
+    assert dialect.update_returning is False
+    assert dialect.delete_returning is False
+    assert dialect.insert_executemany_returning is False
+    assert dialect.preexecute_autoincrement_sequences is False
+    assert dialect.insert_null_pk_still_autoincrements is True
 
 
 def test_get_columns_uses_gaussdb_compatible_reflection_query():
@@ -327,6 +346,24 @@ def test_get_indexes_keeps_expression_indexes_without_column_names():
     ]
 
 
+def test_get_table_comment_reflects_database_comment():
+    dialect = GaussDBDialect()
+    connection = _ReflectionConnection([{"comment": b"test comment"}])
+
+    assert dialect.get_table_comment(connection, "demo") == {"text": "test comment"}
+    assert "obj_description" in connection.statement.text
+    assert connection.params == {"table_name": "demo"}
+
+
+def test_get_table_comment_filters_schema():
+    dialect = GaussDBDialect()
+    connection = _ReflectionConnection([{"comment": None}])
+
+    assert dialect.get_table_comment(connection, "demo", schema="app") == {"text": None}
+    assert "n.nspname = :schema" in connection.statement.text
+    assert connection.params == {"table_name": "demo", "schema": "app"}
+
+
 def test_m_compat_expression_index_uses_gaussdb_expression_parentheses():
     dialect = GaussDBDialect()
     dialect.gaussdb_compatibility = "M"
@@ -337,6 +374,30 @@ def test_m_compat_expression_index_uses_gaussdb_expression_parentheses():
     compiled = str(CreateIndex(index).compile(dialect=dialect))
 
     assert compiled == "CREATE INDEX ix_demo_lower_name ON demo ((lower(name)))"
+
+
+def test_m_compat_uses_backtick_for_quoted_identifiers():
+    dialect = GaussDBDialect()
+    dialect.gaussdb_compatibility = "M"
+    metadata = MetaData()
+    table = Table("demo", metadata, Column("select", String(32)))
+
+    compiled = str(CreateTable(table).compile(dialect=dialect))
+
+    assert "`select`" in compiled
+    assert '"select"' not in compiled
+
+
+def test_m_compat_boolean_ddl_uses_smallint():
+    dialect = GaussDBDialect()
+    dialect.gaussdb_compatibility = "M"
+    metadata = MetaData()
+    table = Table("demo", metadata, Column("flag", Boolean))
+
+    compiled = str(CreateTable(table).compile(dialect=dialect))
+
+    assert "flag SMALLINT" in compiled
+    assert "BOOLEAN" not in compiled
 
 
 def test_m_compat_integer_primary_key_uses_auto_increment():
