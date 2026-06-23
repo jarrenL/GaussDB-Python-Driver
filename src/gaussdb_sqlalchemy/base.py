@@ -221,6 +221,37 @@ class GaussDBDialect(PGDialect):
             return None
         return self._decode_if_bytes(compatibility)
 
+    def set_isolation_level(self, dbapi_connection, level):
+        if self._get_dbapi_database_compatibility(dbapi_connection) != "M":
+            return super().set_isolation_level(dbapi_connection, level)
+
+        cursor = dbapi_connection.cursor()
+        cursor.execute(f"SET SESSION TRANSACTION ISOLATION LEVEL {level}")
+        cursor.execute("COMMIT")
+        cursor.close()
+
+    def _get_dbapi_database_compatibility(self, dbapi_connection):
+        if self.gaussdb_compatibility is not None:
+            return self.gaussdb_compatibility
+
+        cursor = dbapi_connection.cursor()
+        try:
+            cursor.execute(
+                """
+                select datcompatibility
+                from pg_database
+                where datname = current_database()
+                """
+            )
+            row = cursor.fetchone()
+        except Exception:
+            return None
+        finally:
+            cursor.close()
+        if row is None:
+            return None
+        return self._decode_if_bytes(row[0])
+
     def has_table(self, connection, table_name, schema=None, **kw):
         conditions = [
             "c.relname = :table_name",

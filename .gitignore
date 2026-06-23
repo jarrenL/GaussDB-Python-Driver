@@ -12,3 +12,4 @@ release/
 *.egg-info/
 _local/
 tests/test_edge_cases.py
+tests/test_edge_cases2.py

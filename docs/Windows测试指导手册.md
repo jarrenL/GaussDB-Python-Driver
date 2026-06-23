@@ -464,6 +464,10 @@ pytest -m integration -rs
 
 `run_syntax_probe.py` 的目标是识别当前库支持哪些 SQL 风格。部分 FAIL 不一定是驱动问题，可能是 A/B 兼容模式差异。例如 A 兼容库不支持 MySQL 风格 `auto_increment` 属于预期差异。
 
+### 6.7 ON CONFLICT 报错
+
+GaussDB 集中式不支持 PostgreSQL `ON CONFLICT` upsert 语法。SQLAlchemy PostgreSQL 方言的 `insert(...).on_conflict_do_update()` 会生成 `ON CONFLICT` SQL，如果数据库返回语法或能力限制错误，属于 GaussDB 集中式限制，不是 Windows 环境或 JDBC 驱动安装问题。
+
 判断驱动核心能力时，以 `run_integration_probe.py` 和 pytest 集成测试结果为主。
 
 ## 7. 测试报告模板

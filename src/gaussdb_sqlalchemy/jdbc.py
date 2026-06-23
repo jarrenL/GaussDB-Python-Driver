@@ -92,9 +92,11 @@ class GaussDBDialect_jdbc(GaussDBDialect):
         return args, {}
 
     def do_execute(self, cursor, statement, parameters, context=None):
+        statement = _cast_enum_placeholders(statement, context)
         cursor.execute(statement, _convert_parameters(parameters))
 
     def do_executemany(self, cursor, statement, parameters, context=None):
+        statement = _cast_enum_placeholders(statement, context)
         cursor.executemany(
             statement, [_convert_parameters(param_set) for param_set in parameters]
         )
@@ -165,6 +167,90 @@ def _convert_parameters(parameters):
             key: _convert_parameter(value) for key, value in parameters.items()
         }
     return parameters
+
+
+def _cast_enum_placeholders(statement, context):
+    casts = _enum_casts_by_position(context)
+    if not casts:
+        return statement
+
+    output = []
+    placeholder_index = 0
+    in_single_quote = False
+    in_double_quote = False
+    index = 0
+    while index < len(statement):
+        char = statement[index]
+        next_char = statement[index + 1] if index + 1 < len(statement) else ""
+
+        if char == "'" and not in_double_quote:
+            output.append(char)
+            if in_single_quote and next_char == "'":
+                output.append(next_char)
+                index += 2
+                continue
+            in_single_quote = not in_single_quote
+            index += 1
+            continue
+
+        if char == '"' and not in_single_quote:
+            in_double_quote = not in_double_quote
+            output.append(char)
+            index += 1
+            continue
+
+        if char == "?" and not in_single_quote and not in_double_quote:
+            output.append("?")
+            output.append(casts.get(placeholder_index, ""))
+            placeholder_index += 1
+            index += 1
+            continue
+
+        output.append(char)
+        index += 1
+
+    return "".join(output)
+
+
+def _enum_casts_by_position(context):
+    compiled = getattr(context, "compiled", None)
+    positiontup = getattr(compiled, "positiontup", None)
+    binds = getattr(compiled, "binds", None)
+    if not positiontup or not binds:
+        return {}
+
+    casts = {}
+    dialect = getattr(context, "dialect", None)
+    for index, bind_name in enumerate(positiontup):
+        bind = binds.get(bind_name)
+        cast = _enum_cast_for_type(getattr(bind, "type", None), dialect)
+        if cast:
+            casts[index] = cast
+    return casts
+
+
+def _enum_cast_for_type(type_, dialect):
+    if isinstance(type_, sqltypes.TypeDecorator):
+        type_ = type_.impl
+    if not isinstance(type_, sqltypes.Enum):
+        return None
+    if not getattr(type_, "native_enum", False) or not type_.name:
+        return None
+    return "::" + _format_enum_type_name(type_, dialect)
+
+
+def _format_enum_type_name(type_, dialect):
+    preparer = getattr(dialect, "identifier_preparer", None)
+    if preparer is None:
+        quote = lambda value: str(value)
+        quote_schema = quote
+    else:
+        quote = preparer.quote
+        quote_schema = preparer.quote_schema
+
+    if type_.schema:
+        return f"{quote_schema(type_.schema)}.{quote(type_.name)}"
+    return quote(type_.name)
 
 
 def _convert_parameter(value):

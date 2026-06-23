@@ -9,6 +9,7 @@ from sqlalchemy import Boolean
 from sqlalchemy import Column
 from sqlalchemy import Date
 from sqlalchemy import DateTime
+from sqlalchemy import Enum
 from sqlalchemy import Index
 from sqlalchemy import Integer
 from sqlalchemy import LargeBinary
@@ -411,6 +412,47 @@ def test_table_comment_reflection_against_gaussdb_url_from_env():
     finally:
         with engine.begin() as conn:
             conn.execute(text(f"drop table if exists {table_name}"))
+
+
+@pytest.mark.integration
+def test_native_enum_roundtrip_against_gaussdb_url_from_env():
+    engine = _engine()
+    table_name = _table_name("gdbdrv_enum_ut")
+    enum_name = f"{table_name}_status"
+    metadata = MetaData()
+    table = Table(
+        table_name,
+        metadata,
+        Column("id", Integer, primary_key=True),
+        Column("status", Enum("active", "inactive", "pending", name=enum_name)),
+    )
+
+    with engine.connect() as conn:
+        compatibility = _compatibility(conn)
+    if compatibility == "M":
+        pytest.skip("native enum behavior is not required for M compatibility")
+
+    try:
+        metadata.create_all(engine)
+        with engine.begin() as conn:
+            conn.execute(table.insert().values(id=1, status="active"))
+            assert (
+                conn.execute(select(table.c.status).where(table.c.id == 1)).scalar_one()
+                == "active"
+            )
+    finally:
+        metadata.drop_all(engine)
+
+
+@pytest.mark.integration
+def test_isolation_level_against_gaussdb_url_from_env():
+    engine = _engine(isolation_level="READ COMMITTED")
+
+    with engine.connect() as conn:
+        level = conn.execute(text("show transaction_isolation")).scalar_one()
+
+    assert level is not None
+    assert str(level).replace(" ", "_").upper() == "READ_COMMITTED"
 
 
 @pytest.mark.integration

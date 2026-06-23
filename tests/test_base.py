@@ -54,6 +54,34 @@ class _ReflectionConnection:
         return _Rows(self.rows)
 
 
+class _Cursor:
+    def __init__(self, statements, row=None):
+        self.statements = statements
+        self.row = row
+        self.closed = False
+
+    def execute(self, statement):
+        self.statements.append(statement)
+
+    def fetchone(self):
+        return self.row
+
+    def close(self):
+        self.closed = True
+
+
+class _DbapiConnection:
+    def __init__(self, row=None):
+        self.statements = []
+        self.row = row
+        self.cursors = []
+
+    def cursor(self):
+        cursor = _Cursor(self.statements, self.row)
+        self.cursors.append(cursor)
+        return cursor
+
+
 def test_dialect_identity_and_defaults():
     assert GaussDBDialect.name == "gaussdb"
     assert GaussDBDialect.default_paramstyle == "pyformat"
@@ -134,6 +162,45 @@ def test_m_compat_disables_returning_and_native_boolean():
     assert dialect.insert_executemany_returning is False
     assert dialect.preexecute_autoincrement_sequences is False
     assert dialect.insert_null_pk_still_autoincrements is True
+
+
+def test_m_compat_isolation_level_uses_mysql_style_session_syntax():
+    dialect = GaussDBDialect()
+    dialect.gaussdb_compatibility = "M"
+    connection = _DbapiConnection()
+
+    dialect.set_isolation_level(connection, "READ COMMITTED")
+
+    assert connection.statements == [
+        "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED",
+        "COMMIT",
+    ]
+
+
+def test_non_m_compat_isolation_level_keeps_postgresql_session_syntax():
+    dialect = GaussDBDialect()
+    dialect.gaussdb_compatibility = "A"
+    connection = _DbapiConnection()
+
+    dialect.set_isolation_level(connection, "READ COMMITTED")
+
+    assert connection.statements == [
+        "SET SESSION CHARACTERISTICS AS TRANSACTION ISOLATION LEVEL READ COMMITTED",
+        "COMMIT",
+    ]
+
+
+def test_isolation_level_detects_m_compatibility_from_raw_connection():
+    dialect = GaussDBDialect()
+    connection = _DbapiConnection(row=(b"M",))
+
+    dialect.set_isolation_level(connection, "READ COMMITTED")
+
+    assert connection.statements[0].strip().startswith("select datcompatibility")
+    assert connection.statements[1:] == [
+        "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED",
+        "COMMIT",
+    ]
 
 
 def test_get_columns_uses_gaussdb_compatible_reflection_query():

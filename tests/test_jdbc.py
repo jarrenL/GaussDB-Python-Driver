@@ -7,6 +7,11 @@ from datetime import timedelta
 
 import pytest
 from sqlalchemy import Date
+from sqlalchemy import Column
+from sqlalchemy import Enum
+from sqlalchemy import Integer
+from sqlalchemy import MetaData
+from sqlalchemy import Table
 from sqlalchemy import func
 from sqlalchemy import select
 from sqlalchemy.dialects import registry
@@ -14,6 +19,7 @@ from sqlalchemy.engine import make_url
 
 from gaussdb_sqlalchemy import jdbc_dbapi
 from gaussdb_sqlalchemy.jdbc import _convert_parameter
+from gaussdb_sqlalchemy.jdbc import _cast_enum_placeholders
 from gaussdb_sqlalchemy.jdbc import _is_autocommit_rollback_error
 from gaussdb_sqlalchemy.jdbc import GaussDBDialect_jdbc
 
@@ -125,6 +131,42 @@ def test_current_timestamp_expression_compiles_without_parentheses():
     assert str(compiled) == "SELECT CURRENT_TIMESTAMP AS current_timestamp_1"
 
 
+def test_jdbc_execute_casts_native_enum_parameters():
+    dialect = GaussDBDialect_jdbc()
+    metadata = MetaData()
+    table = Table(
+        "demo",
+        metadata,
+        Column("id", Integer),
+        Column("status", Enum("active", "inactive", name="vstatus")),
+    )
+    compiled = table.insert().values(id=1, status="active").compile(dialect=dialect)
+    context = types.SimpleNamespace(compiled=compiled, dialect=dialect)
+
+    statement = _cast_enum_placeholders(str(compiled), context)
+
+    assert statement == "INSERT INTO demo (id, status) VALUES (?, ?::vstatus)"
+
+
+def test_jdbc_enum_cast_does_not_rewrite_question_marks_inside_literals():
+    dialect = GaussDBDialect_jdbc()
+    metadata = MetaData()
+    table = Table(
+        "demo",
+        metadata,
+        Column("status", Enum("active", "inactive", name="vstatus")),
+    )
+    compiled = table.insert().values(status="active").compile(dialect=dialect)
+    context = types.SimpleNamespace(compiled=compiled, dialect=dialect)
+
+    statement = _cast_enum_placeholders(
+        "select '?' as literal, ? as status",
+        context,
+    )
+
+    assert statement == "select '?' as literal, ?::vstatus as status"
+
+
 def test_jdbc_date_result_processor_converts_datetime_to_date():
     dialect = GaussDBDialect_jdbc()
     processor = dialect.type_descriptor(Date()).result_processor(dialect, None)
@@ -175,6 +217,28 @@ def test_jdbc_timestamp_parser_accepts_space_and_truncates_nanoseconds():
     )
 
 
+def test_jdbc_other_converter_extracts_pgobject_value():
+    class FakePgObject:
+        def getValue(self):
+            return "active"
+
+    class FakeResultSet:
+        def getObject(self, column):
+            assert column == 1
+            return FakePgObject()
+
+    assert jdbc_dbapi._to_other(FakeResultSet(), 1) == "active"
+
+
+def test_jdbc_other_converter_falls_back_to_string():
+    class FakeResultSet:
+        def getObject(self, column):
+            assert column == 1
+            return 123
+
+    assert jdbc_dbapi._to_other(FakeResultSet(), 1) == "123"
+
+
 def test_jdbc_dbapi_loads_jaydebeapi_lazily(monkeypatch):
     module = types.ModuleType("jaydebeapi")
     calls = []
@@ -190,10 +254,12 @@ def test_jdbc_dbapi_loads_jaydebeapi_lazily(monkeypatch):
         return FakeConnection()
 
     module.connect = connect
+    module._DEFAULT_CONVERTERS = {}
     monkeypatch.setitem(sys.modules, "jaydebeapi", module)
 
     assert isinstance(jdbc_dbapi.connect("driver", "url"), FakeConnection)
     assert calls == [False]
+    assert module._DEFAULT_CONVERTERS["OTHER"] is jdbc_dbapi._to_other
 
 
 def test_jdbc_dbapi_has_actionable_error_when_dependency_missing(monkeypatch):

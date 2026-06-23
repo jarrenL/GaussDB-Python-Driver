@@ -47,6 +47,7 @@ def _patch_converters(module: ModuleType) -> None:
     module._DEFAULT_CONVERTERS["BLOB"] = _to_binary
     module._DEFAULT_CONVERTERS["BOOLEAN"] = _to_boolean
     module._DEFAULT_CONVERTERS["BIT"] = _to_boolean
+    module._DEFAULT_CONVERTERS["OTHER"] = _to_other
 
     converters = getattr(module, "_converters", None)
     jdbc_name_to_const = getattr(module, "_jdbc_name_to_const", None)
@@ -92,6 +93,16 @@ def _to_boolean(result_set, column):
     if result_set.wasNull():
         return None
     return bool(value)
+
+
+def _to_other(result_set, column):
+    value = result_set.getObject(column)
+    if value is None:
+        return None
+    get_value = getattr(value, "getValue", None)
+    if get_value is not None:
+        value = get_value()
+    return str(value)
 
 
 def connect(*args: Any, **kwargs: Any):
