@@ -3,11 +3,11 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "gaussdb-sqlalchemy-driver"
+name = "gaussdb-sqlalchemy-python-driver"
 version = "0.1.0"
 description = "Lightweight SQLAlchemy JDBC dialect for Huawei GaussDB centralized 505.1."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.8"
 license = "Apache-2.0"
 authors = [{ name = "GaussDB Python Driver Contributors" }]
 keywords = ["gaussdb", "sqlalchemy", "database", "driver", "windows"]
@@ -17,6 +17,7 @@ classifiers = [
     "Operating System :: Microsoft :: Windows",
     "Operating System :: POSIX",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -38,8 +39,8 @@ test = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jarrenL/GaussDB-Python-Driver"
-Issues = "https://github.com/jarrenL/GaussDB-Python-Driver/issues"
+Homepage = "https://github.com/jarrenL/GaussDB-SQLAlchemy-Python-Driver"
+Issues = "https://github.com/jarrenL/GaussDB-SQLAlchemy-Python-Driver/issues"
 
 [project.entry-points."sqlalchemy.dialects"]
 gaussdb = "gaussdb_sqlalchemy.jdbc:GaussDBDialect_jdbc"
@@ -47,6 +48,9 @@ gaussdb = "gaussdb_sqlalchemy.jdbc:GaussDBDialect_jdbc"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+gaussdb_sqlalchemy = ["gaussdbjdbc.jar"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

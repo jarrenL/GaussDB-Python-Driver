@@ -6,14 +6,36 @@ import re
 
 from sqlalchemy import bindparam
 from sqlalchemy.dialects.postgresql.base import PGDialect
+from sqlalchemy.dialects.postgresql.base import PGCompiler
 from sqlalchemy.dialects.postgresql.base import PGDDLCompiler
 from sqlalchemy.dialects.postgresql.base import PGIdentifierPreparer
 from sqlalchemy.dialects.postgresql.base import PGTypeCompiler
 from sqlalchemy.exc import NoSuchTableError
 from sqlalchemy import schema as sa_schema
 from sqlalchemy import types as sqltypes
+from sqlalchemy import LargeBinary
 from sqlalchemy import text
 from sqlalchemy.sql import expression
+from sqlalchemy.sql import operators
+from sqlalchemy.sql.compiler import OPERATORS
+
+
+class GaussDBCompiler(PGCompiler):
+    def visit_concat_op_binary(self, binary, operator_, **kw):
+        if self.dialect.gaussdb_compatibility == "M":
+            return "concat(%s, %s)" % (
+                self.process(binary.left, **kw),
+                self.process(binary.right, **kw),
+            )
+        return self._generate_generic_binary(binary, OPERATORS[operator_], **kw)
+
+    def visit_concat_op_expression_clauselist(self, clauselist, operator_, **kw):
+        if self.dialect.gaussdb_compatibility == "M":
+            parts = [self.process(clause, **kw) for clause in clauselist.clauses]
+            return "concat(" + ", ".join(parts) + ")"
+        return self._generate_delimited_list(
+            clauselist.clauses, OPERATORS[operator_], **kw
+        )
 
 
 class GaussDBDDLCompiler(PGDDLCompiler):
@@ -131,15 +153,32 @@ class GaussDBTypeCompiler(PGTypeCompiler):
 
     def visit_TIMESTAMP(self, type_, **kw):
         if self.dialect.gaussdb_compatibility == "M":
-            if getattr(type_, "precision", None) is not None:
-                return f"TIMESTAMP({type_.precision})"
-            return "TIMESTAMP"
+            precision = getattr(type_, "precision", None)
+            if precision is None:
+                precision = 6
+            return f"TIMESTAMP({precision})"
         return super().visit_TIMESTAMP(type_, **kw)
 
     def visit_large_binary(self, type_, **kw):
         if self.dialect.gaussdb_compatibility == "M":
             return "BLOB"
         return super().visit_large_binary(type_, **kw)
+
+
+from sqlalchemy.dialects.postgresql.base import PGExecutionContext
+
+
+class GaussDBMExecutionContext(PGExecutionContext):
+    def get_lastrowid(self):
+        try:
+            cursor = self.cursor
+            cursor.execute("select last_insert_id()")
+            row = cursor.fetchone()
+            if row is not None:
+                return int(str(row[0]))
+        except Exception:
+            pass
+        return None
 
 
 class GaussDBDialect(PGDialect):
@@ -152,6 +191,7 @@ class GaussDBDialect(PGDialect):
 
     name = "gaussdb"
     ddl_compiler = GaussDBDDLCompiler
+    statement_compiler = GaussDBCompiler
     preparer = GaussDBIdentifierPreparer
     type_compiler = GaussDBTypeCompiler
     supports_statement_cache = True
@@ -168,6 +208,11 @@ class GaussDBDialect(PGDialect):
     use_native_hstore = False
     postgresql_compat_version = (9, 2)
     gaussdb_compatibility = None
+
+    # Register GaussDB M-compat binary types for reflection.
+    ischema_names = dict(PGDialect.ischema_names)
+    ischema_names["blob"] = LargeBinary
+    ischema_names["longblob"] = LargeBinary
 
     def initialize(self, connection):
         super().initialize(connection)
@@ -186,6 +231,8 @@ class GaussDBDialect(PGDialect):
             self.insert_executemany_returning = False
             self.preexecute_autoincrement_sequences = False
             self.insert_null_pk_still_autoincrements = True
+            self.postfetch_lastrowid = True
+            self.execution_ctx_cls = GaussDBMExecutionContext
 
     def _get_server_version_info(self, connection):
         version = connection.exec_driver_sql("select pg_catalog.version()").scalar()
@@ -363,7 +410,10 @@ class GaussDBDialect(PGDialect):
             elif normalized_type in {"blob", "longblob"} or normalized_type.startswith(
                 ("varbinary", "binary")
             ):
-                format_type = "bytea"
+                if self.gaussdb_compatibility == "M":
+                    format_type = "blob"
+                else:
+                    format_type = "bytea"
             default = self._decode_if_bytes(row["default"])
             comment = self._decode_if_bytes(row["comment"])
             reflected.setdefault(key, []).append(

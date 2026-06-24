@@ -67,6 +67,9 @@ class GaussDBDialect_jdbc(GaussDBDialect):
         driver_path = opts.pop("jdbc_driver_path", None)
         jdbc_url = opts.pop("jdbc_url", None)
 
+        if not driver_path:
+            driver_path = self._bundled_jar_path()
+
         if not jdbc_url:
             jdbc_url = self._build_jdbc_url(url, opts, driver_class)
 
@@ -118,6 +121,15 @@ class GaussDBDialect_jdbc(GaussDBDialect):
         if os.pathsep == ":" and re.search(r"\.jar:", value, re.IGNORECASE):
             return [part for part in value.split(":") if part]
         return [value] if value else []
+
+    @staticmethod
+    def _bundled_jar_path():
+        """Return the path to the JDBC jar bundled inside the package."""
+        import os
+        jar = os.path.join(
+            os.path.dirname(__file__), "gaussdbjdbc.jar"
+        )
+        return jar if os.path.isfile(jar) else None
 
     @staticmethod
     def _build_jdbc_url(url, opts: dict[str, Any], driver_class: str) -> str:
