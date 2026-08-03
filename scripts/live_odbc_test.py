@@ -7,12 +7,20 @@ from urllib.parse import quote_plus
 
 sys.path.insert(0, "src")
 
-_HOST = os.environ.get("GAUSSDB_HOST", "121.37.186.131")
+_HOST = os.environ.get("GAUSSDB_HOST")
 _PORT = os.environ.get("GAUSSDB_PORT", "19995")
-_USER = os.environ.get("GAUSSDB_USER", "sqlbuilder1")
-_PASS = quote_plus(os.environ.get("GAUSSDB_PASSWORD", "huawei@123"))
+_USER = os.environ.get("GAUSSDB_USER")
+_PASSWORD = os.environ.get("GAUSSDB_PASSWORD")
 _DRIVER = quote_plus(os.environ.get("GAUSSDB_DRIVER", "GaussDB ODBC Driver"))
 _DB = os.environ.get("GAUSSDB_DB_A", "postgres")
+
+if not all([_HOST, _USER, _PASSWORD]):
+    raise SystemExit(
+        "Set GAUSSDB_HOST, GAUSSDB_USER and GAUSSDB_PASSWORD before running "
+        "scripts/live_odbc_test.py"
+    )
+
+_PASS = quote_plus(_PASSWORD)
 
 from sqlalchemy import create_engine, text
 
